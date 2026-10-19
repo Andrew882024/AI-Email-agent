@@ -12,10 +12,13 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "doctor": "pnpm run build && node dist/cli/doctor.js"
+    "doctor": "pnpm run build && node dist/cli/doctor.js",
+    "migrate": "pnpm run build && node dist/cli/migrate.js"
   },
   "dependencies": {
+    "kysely": "0.29.7",
     "pg": "^8.23.1",
+    "pino": "10.4.0",
     "zod": "^4.6.7"
   },
   "devDependencies": {

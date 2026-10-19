@@ -1,4 +1,5 @@
 import { existsSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { z } from 'zod';
 
@@ -11,6 +12,7 @@ const EnvSchema = z.object({
     .url({ protocol: /^postgres(ql)?$/ })
     .default('postgres://ai_email:ai_email@localhost:5434/ai_email'),
   SERVER_PORT: z.coerce.number().int().min(1).max(65535).default(4317),
+  APP_DATA_DIR: z.string().min(1).default(join(homedir(), '.ai-email-agent')),
   GOOGLE_CLIENT_ID: z.string().min(1),
   GOOGLE_CLIENT_SECRET: z.string().min(1),
   APP_SECRET_KEY: optionalString,
@@ -22,6 +24,8 @@ export interface AppConfig {
   logLevel: 'trace' | 'debug' | 'info' | 'warn' | 'error' | 'fatal';
   databaseUrl: string;
   serverPort: number;
+  /** Root for local app files (logs, uploads). Electron overrides this with its userData path. */
+  dataDir: string;
   google: { clientId: string; clientSecret: string };
   appSecretKey?: string;
   geminiApiKey?: string;
@@ -45,6 +49,7 @@ export function parseConfig(env: Record<string, string | undefined>): AppConfig 
     logLevel: e.LOG_LEVEL,
     databaseUrl: e.DATABASE_URL,
     serverPort: e.SERVER_PORT,
+    dataDir: e.APP_DATA_DIR,
     google: { clientId: e.GOOGLE_CLIENT_ID, clientSecret: e.GOOGLE_CLIENT_SECRET },
     appSecretKey: e.APP_SECRET_KEY,
     geminiApiKey: e.GEMINI_API_KEY,

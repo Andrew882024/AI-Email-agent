@@ -16,6 +16,7 @@
     "format:check": "prettier --check .",
     "db:up": "docker compose up -d --wait",
     "db:down": "docker compose down",
+    "db:migrate": "pnpm --filter @ai-email/core migrate",
     "doctor": "pnpm --filter @ai-email/core doctor"
   },
   "devDependencies": {

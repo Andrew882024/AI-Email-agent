@@ -1,3 +1,5 @@
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { ConfigError, parseConfig } from './env.js';
 
@@ -11,6 +13,7 @@ describe('parseConfig', () => {
       logLevel: 'info',
       databaseUrl: 'postgres://ai_email:ai_email@localhost:5434/ai_email',
       serverPort: 4317,
+      dataDir: join(homedir(), '.ai-email-agent'),
       google: { clientId: 'id', clientSecret: 'secret' },
     });
     expect(config.geminiApiKey).toBeUndefined();

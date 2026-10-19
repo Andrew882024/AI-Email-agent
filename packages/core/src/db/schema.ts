@@ -1,0 +1,137 @@
+// Kysely table types. Mirrors migrations/; only db/ code imports this.
+import type { ColumnType, Generated } from 'kysely';
+import type { EmailAddress } from '../domain/types.js';
+
+/** jsonb: parsed on select, written as a JSON string (node-pg would turn JS arrays into PG arrays). */
+type Json<T> = ColumnType<T, string, string>;
+/** bigint identity: node-pg returns int8 as string. */
+type Int8Id = ColumnType<string, never, never>;
+
+export interface AccountsTable {
+  id: Generated<string>;
+  email: string;
+  google_sub: string;
+  display_name: string | null;
+  history_id: string | null;
+  last_full_sync_at: Date | null;
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
+export interface OAuthTokensTable {
+  account_id: string;
+  encrypted_refresh_token: string;
+  scopes: string[];
+  updated_at: Generated<Date>;
+}
+
+export interface LabelsTable {
+  account_id: string;
+  id: string;
+  name: string;
+  type: 'system' | 'user';
+  color_background: string | null;
+  color_text: string | null;
+}
+
+export interface ThreadsTable {
+  account_id: string;
+  id: string;
+  snippet: string | null;
+  last_message_at: Date | null;
+}
+
+export interface MessagesTable {
+  account_id: string;
+  id: string;
+  thread_id: string;
+  history_id: string | null;
+  message_id_header: string | null;
+  in_reply_to: string | null;
+  references_header: string | null;
+  from_addr: Json<EmailAddress | null> | null;
+  to_addrs: Json<EmailAddress[]>;
+  cc_addrs: Json<EmailAddress[]>;
+  bcc_addrs: Json<EmailAddress[]>;
+  reply_to_addrs: Json<EmailAddress[]>;
+  subject: string;
+  snippet: string;
+  body_text: string | null;
+  body_html: string | null;
+  internal_date: Date;
+  size_estimate: number | null;
+  has_attachments: boolean;
+  fts: ColumnType<string, never, never>;
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
+export interface MessageLabelsTable {
+  account_id: string;
+  message_id: string;
+  label_id: string;
+}
+
+export interface AttachmentsTable {
+  account_id: string;
+  message_id: string;
+  part_id: string;
+  attachment_id: string | null;
+  filename: string;
+  mime_type: string;
+  size: number;
+  content_id: string | null;
+}
+
+export interface TodosTable {
+  id: Generated<string>;
+  account_id: string;
+  message_id: string | null;
+  google_task_id: string;
+  tasklist_id: string;
+  title: string;
+  status: Generated<'needsAction' | 'completed'>;
+  due: Date | null;
+  completed_at: Date | null;
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
+export interface OutboxOpsTable {
+  id: Int8Id;
+  account_id: string;
+  op: string;
+  payload: Json<unknown>;
+  status: Generated<'pending' | 'in_progress' | 'done' | 'failed'>;
+  attempts: Generated<number>;
+  last_error: string | null;
+  next_attempt_at: Generated<Date>;
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
+export interface ActionLogsTable {
+  id: Int8Id;
+  ts: Generated<Date>;
+  account_id: string | null;
+  actor: string;
+  action: string;
+  target_ids: Generated<string[]>;
+  params: Json<unknown> | null;
+  status: 'success' | 'error';
+  error: string | null;
+  duration_ms: number | null;
+}
+
+export interface Database {
+  accounts: AccountsTable;
+  oauth_tokens: OAuthTokensTable;
+  labels: LabelsTable;
+  threads: ThreadsTable;
+  messages: MessagesTable;
+  message_labels: MessageLabelsTable;
+  attachments: AttachmentsTable;
+  todos: TodosTable;
+  outbox_ops: OutboxOpsTable;
+  action_logs: ActionLogsTable;
+}
