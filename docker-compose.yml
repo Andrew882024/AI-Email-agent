@@ -1,0 +1,23 @@
+name: ai-email-agent
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: ai_email
+      POSTGRES_PASSWORD: ai_email
+      POSTGRES_DB: ai_email
+    ports:
+      # Host port 5434 avoids clashing with other local Postgres instances (5432/5433).
+      - '127.0.0.1:${PG_PORT:-5434}:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ai_email -d ai_email']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  pgdata:

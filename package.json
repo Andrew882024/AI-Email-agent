@@ -1,0 +1,32 @@
+{
+  "name": "ai-email-agent",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.5.0",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "test": "vitest run",
+    "test:integration": "TEST_DATABASE_URL=postgres://ai_email:ai_email@localhost:5434/ai_email vitest run",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "db:up": "docker compose up -d --wait",
+    "db:down": "docker compose down",
+    "doctor": "pnpm --filter @ai-email/core doctor"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^24.19.2",
+    "eslint": "^10.13.0",
+    "eslint-config-prettier": "^10.1.8",
+    "globals": "^17.13.0",
+    "prettier": "^3.9.10",
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.71.2",
+    "vitest": "^5.0.5"
+  }
+}
