@@ -1,0 +1,42 @@
+{
+  "name": "@ai-email/desktop",
+  "productName": "AI Email Agent",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AI Email Agent desktop app",
+  "main": "dist/main.cjs",
+  "scripts": {
+    "build": "node build.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start": "node build.mjs && env -u ELECTRON_RUN_AS_NODE electron .",
+    "pack": "node build.mjs && electron-builder --mac dir"
+  },
+  "build": {
+    "appId": "com.aiemailagent.desktop",
+    "productName": "AI Email Agent",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "web/**/*",
+      "package.json"
+    ],
+    "asar": true,
+    "npmRebuild": false,
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": [
+        "dir"
+      ],
+      "identity": null
+    }
+  },
+  "devDependencies": {
+    "@ai-email/core": "workspace:*",
+    "@ai-email/server": "workspace:*",
+    "electron": "44.8.0",
+    "electron-builder": "26.17.0",
+    "esbuild": "0.28.2"
+  }
+}

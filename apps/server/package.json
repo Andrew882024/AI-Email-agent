@@ -18,6 +18,7 @@
   "dependencies": {
     "@ai-email/core": "workspace:*",
     "@fastify/cors": "^11.3.1",
+    "@fastify/static": "10.1.6",
     "fastify": "^5.12.7",
     "zod": "^4.6.7"
   },

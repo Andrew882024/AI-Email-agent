@@ -6,3 +6,7 @@ packages:
 # optional platform package, so its postinstall check isn't needed.
 allowBuilds:
   esbuild: false
+  # Downloads the Electron binary for this platform (official GitHub release).
+  electron: true
+  # Windows installer tooling from electron-builder; we only build for macOS.
+  electron-winstaller: false

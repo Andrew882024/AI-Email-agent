@@ -21,6 +21,8 @@
     "sync": "pnpm --filter @ai-email/core sync",
     "server": "pnpm -r build && pnpm --filter @ai-email/server start",
     "web": "pnpm --filter @ai-email/web dev",
+    "desktop": "pnpm --filter @ai-email/desktop start",
+    "desktop:pack": "pnpm --filter @ai-email/desktop pack",
     "doctor": "pnpm --filter @ai-email/core doctor"
   },
   "devDependencies": {
