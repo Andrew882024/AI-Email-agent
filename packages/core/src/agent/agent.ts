@@ -95,6 +95,13 @@ export function systemPrompt(input: {
     '- Cite the emails you rely on as Markdown links: [short description](#thread/<threadId>).',
     '- For changes to many emails, find them first and say what you will change. Changes to more than 20 emails',
     "  wait for the user's approval automatically.",
+    '- Workflows: for standing rules ("from now on…", "always…") or bulk changes described in words ("archive all',
+    '  promotional mail"), use a workflow instead of collecting ids yourself. 1) Write the rule: precise criteria for',
+    "  which emails match and which don't, 3-10 keywords, the action; show it and ask the user to confirm or adjust.",
+    '  Call create_workflow only after the user has confirmed the rule in a later message, never in the same turn',
+    '  as their request (unless they explicitly said to go ahead without confirming).',
+    '  2) create_workflow (persistent = also new mail; one_shot = one-time). 3) Show the preview: how many match,',
+    '  a few examples and close calls. 4) apply_workflow; the user approves it in the app.',
     '- Be concise. Reply in the language the user writes in.',
     ...(memories.length > 0
       ? [
@@ -324,18 +331,26 @@ export class ChatAgent {
     emit: Emit,
   ): Promise<ToolRun[]> {
     const { repos, approvalThreshold = 20 } = this.options;
-    const sideEffects = new Map(this.options.tools.describe().map((t) => [t.name, t.sideEffect]));
+    const info = new Map(this.options.tools.describe().map((t) => [t.name, t]));
     const planned = [];
     for (const [position, call] of calls.entries()) {
+      const tool = info.get(call.name);
       const count = Array.isArray(call.args.messageIds) ? call.args.messageIds.length : 0;
-      const needsApproval = sideEffects.get(call.name) === 'write' && count > approvalThreshold;
+      const needsApproval =
+        tool?.approval === 'always' || (tool?.sideEffect === 'write' && count > approvalThreshold);
       if (needsApproval) {
+        const ctx = { accountId, actor: `agent:${sessionId}` as const };
+        const description =
+          (await this.options.tools.approvalText(call.name, ctx, call.args)) ??
+          `${call.name.replace(/_/g, ' ')} on ${count} emails`;
+        // The description is kept on the waiting run so the approval card survives a reload.
         planned.push({
           position,
           callId: call.id,
           tool: call.name,
           input: call.args,
           status: 'awaiting_approval' as const,
+          result: { description },
         });
         continue;
       }
@@ -353,13 +368,14 @@ export class ChatAgent {
     for (const run of runs) {
       emit({ type: 'tool_call', runId: run.id, name: run.tool, args: run.input });
       if (run.status === 'awaiting_approval') {
-        const count = (run.input.messageIds as unknown[]).length;
+        const description =
+          (run.result as { description?: string } | undefined)?.description ?? run.tool;
         emit({
           type: 'approval_required',
           runId: run.id,
           name: run.tool,
           args: run.input,
-          description: `${run.tool.replace(/_/g, ' ')} on ${count} emails`,
+          description,
         });
       } else {
         emit({

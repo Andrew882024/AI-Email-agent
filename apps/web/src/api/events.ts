@@ -36,6 +36,10 @@ export function useServerEvents(enabled: boolean): void {
       'todos.changed',
       () => void qc.invalidateQueries({ queryKey: ['todos'] }),
     );
+    source.addEventListener(
+      'workflow.updated',
+      () => void qc.invalidateQueries({ queryKey: ['workflows'] }),
+    );
     source.addEventListener('sync.status', (event) => {
       const status = data<{ phase: SyncPhase; synced?: number; error?: string }>(event);
       setSync(status);

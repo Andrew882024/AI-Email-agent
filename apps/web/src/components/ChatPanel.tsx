@@ -14,6 +14,7 @@ import {
   Trash2,
   Wrench,
   X,
+  Zap,
 } from 'lucide-react';
 import { type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from 'react';
 import Markdown from 'react-markdown';
@@ -33,6 +34,7 @@ import { api, ApiError } from '../api/client';
 import { fileSize } from '../lib/format';
 import { useUi } from '../store';
 import { MemoryDialog } from './MemoryDialog';
+import { WorkflowsDialog } from './WorkflowsDialog';
 import { IconButton, Spinner } from './ui';
 
 const SUGGESTIONS = [
@@ -263,7 +265,10 @@ function History({
                   )}
                   {waiting && (
                     <ApprovalCard
-                      description={`${toolLabel(waiting.tool)} on ${(waiting.input.messageIds as unknown[] | undefined)?.length ?? 0} emails`}
+                      description={
+                        (waiting.result as { description?: string } | undefined)?.description ??
+                        `${toolLabel(waiting.tool)} on ${(waiting.input.messageIds as unknown[] | undefined)?.length ?? 0} emails`
+                      }
                       args={waiting.input}
                       busy={busy}
                       onDecide={(approve) => onDecide(waiting.id, approve)}
@@ -310,6 +315,7 @@ export function ChatPanel() {
   const [live, setLive] = useState<LiveTurn>();
   const [busy, setBusy] = useState(false);
   const [memoryOpen, setMemoryOpen] = useState(false);
+  const [workflowsOpen, setWorkflowsOpen] = useState(false);
   const scroller = useRef<HTMLDivElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const abort = useRef<AbortController | null>(null);
@@ -533,6 +539,9 @@ export function ChatPanel() {
             </Menu.Content>
           </Menu.Portal>
         </Menu.Root>
+        <IconButton label="Workflows" onClick={() => setWorkflowsOpen(true)} disabled={unavailable}>
+          <Zap className="h-[18px] w-[18px]" />
+        </IconButton>
         <IconButton
           label="What the assistant remembers"
           onClick={() => setMemoryOpen(true)}
@@ -691,6 +700,7 @@ export function ChatPanel() {
         </div>
       </footer>
       <MemoryDialog open={memoryOpen} onOpenChange={setMemoryOpen} />
+      <WorkflowsDialog open={workflowsOpen} onOpenChange={setWorkflowsOpen} />
     </aside>
   );
 }

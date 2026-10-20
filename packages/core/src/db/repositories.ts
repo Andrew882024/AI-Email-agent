@@ -21,6 +21,13 @@ import type {
   StoredPart,
   ToolRun,
   ToolRunStatus,
+  DecisionStatus,
+  Workflow,
+  WorkflowAction,
+  WorkflowDecision,
+  WorkflowMode,
+  WorkflowStatus,
+  WorkflowType,
   ThreadSummary,
   Todo,
   TodoStatus,
@@ -329,6 +336,57 @@ export interface ChatFileRepository {
   get(id: string): Promise<ChatFile | undefined>;
 }
 
+export interface NewWorkflow {
+  accountId: string;
+  name: string;
+  type: WorkflowType;
+  mode: WorkflowMode;
+  instruction: string;
+  criteria: string;
+  keywords: string[];
+  senderFilter?: string;
+  since?: Date;
+  action: WorkflowAction;
+  sessionId?: string;
+}
+
+export interface WorkflowRepository {
+  create(input: NewWorkflow, status: WorkflowStatus): Promise<Workflow>;
+  get(id: string): Promise<Workflow | undefined>;
+  /** Newest first. */
+  list(accountId: string, filter?: { status?: WorkflowStatus }): Promise<Workflow[]>;
+  setStatus(id: string, status: WorkflowStatus, error?: string): Promise<void>;
+  delete(id: string): Promise<void>;
+  /** Insert decisions; messages already decided by this workflow are left alone. */
+  recordDecisions(
+    workflowId: string,
+    accountId: string,
+    decisions: {
+      messageId: string;
+      phase: 'backfill' | 'incremental';
+      match: boolean;
+      confidence: number;
+      reason: string;
+      status: DecisionStatus;
+    }[],
+  ): Promise<void>;
+  /** Of these messages, the ones this workflow already decided. */
+  decided(workflowId: string, messageIds: string[]): Promise<Set<string>>;
+  decisions(
+    workflowId: string,
+    filter?: { status?: DecisionStatus; limit?: number },
+  ): Promise<WorkflowDecision[]>;
+  getDecision(workflowId: string, messageId: string): Promise<WorkflowDecision | undefined>;
+  setDecisionStatus(
+    workflowId: string,
+    messageIds: string[],
+    status: DecisionStatus,
+    error?: string,
+  ): Promise<void>;
+  /** Decision counts by status. */
+  counts(workflowId: string): Promise<Partial<Record<DecisionStatus, number>>>;
+}
+
 export interface Repositories {
   accounts: AccountRepository;
   oauthTokens: OAuthTokenRepository;
@@ -342,4 +400,5 @@ export interface Repositories {
   chats: ChatRepository;
   memory: MemoryRepository;
   chatFiles: ChatFileRepository;
+  workflows: WorkflowRepository;
 }

@@ -25,6 +25,8 @@ export interface AppEvents {
     total?: number;
     error?: string;
   };
+  /** A workflow was created, previewed, applied, paused, or acted on new mail. */
+  'workflow.updated': { accountId: string; workflowId: string };
   /** A local change was queued for Google; wakes the outbox worker. */
   'outbox.enqueued': { accountId: string };
   /** A queued change was given up on; local state has been reconciled with Google. */

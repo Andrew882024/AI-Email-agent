@@ -198,6 +198,39 @@ export interface ChatFilesTable {
   created_at: Generated<Date>;
 }
 
+export interface WorkflowsTable {
+  id: Generated<string>;
+  account_id: string;
+  name: string;
+  type: 'label' | 'todo' | 'archive' | 'star_read';
+  mode: 'persistent' | 'one_shot';
+  instruction: string;
+  criteria: string;
+  keywords: Generated<string[]>;
+  sender_filter: string | null;
+  since: Date | null;
+  action: Json<Record<string, unknown>>;
+  status: 'previewing' | 'awaiting_approval' | 'active' | 'paused' | 'completed' | 'failed';
+  error: string | null;
+  session_id: string | null;
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
+export interface WorkflowDecisionsTable {
+  workflow_id: string;
+  account_id: string;
+  message_id: string;
+  phase: 'backfill' | 'incremental';
+  match: boolean;
+  confidence: number;
+  reason: Generated<string>;
+  status: 'pending' | 'applied' | 'skipped' | 'undone' | 'failed';
+  error: string | null;
+  decided_at: Generated<Date>;
+  applied_at: Date | null;
+}
+
 export interface Database {
   accounts: AccountsTable;
   oauth_tokens: OAuthTokensTable;
@@ -216,4 +249,6 @@ export interface Database {
   tool_runs: ToolRunsTable;
   memory_items: MemoryItemsTable;
   chat_files: ChatFilesTable;
+  workflows: WorkflowsTable;
+  workflow_decisions: WorkflowDecisionsTable;
 }

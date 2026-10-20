@@ -242,6 +242,61 @@ export interface ChatFile {
   createdAt: Date;
 }
 
+export type WorkflowType = 'label' | 'todo' | 'archive' | 'star_read';
+export type WorkflowMode = 'persistent' | 'one_shot';
+export type WorkflowStatus =
+  'previewing' | 'awaiting_approval' | 'active' | 'paused' | 'completed' | 'failed';
+
+/** What a workflow does to matching mail. */
+export interface WorkflowAction {
+  /** label: the label to apply (created if missing). */
+  labelName?: string;
+  /** todo: title of each todo (default: the email subject). */
+  todoTitle?: string;
+  /** star_read */
+  star?: boolean;
+  markRead?: boolean;
+}
+
+export interface Workflow {
+  id: string;
+  accountId: string;
+  name: string;
+  type: WorkflowType;
+  mode: WorkflowMode;
+  /** The user's request, verbatim. */
+  instruction: string;
+  /** Which emails match (and which don't), as written for the classifier. */
+  criteria: string;
+  keywords: string[];
+  /** Only consider mail whose sender contains this. */
+  senderFilter?: string;
+  /** Only consider mail received on/after this. */
+  since?: Date;
+  action: WorkflowAction;
+  status: WorkflowStatus;
+  error?: string;
+  sessionId?: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export type DecisionStatus = 'pending' | 'applied' | 'skipped' | 'undone' | 'failed';
+
+export interface WorkflowDecision {
+  workflowId: string;
+  messageId: string;
+  phase: 'backfill' | 'incremental';
+  match: boolean;
+  confidence: number;
+  reason: string;
+  /** pending = matched, waiting for approval; skipped = not a match (or below the threshold). */
+  status: DecisionStatus;
+  error?: string;
+  decidedAt: Date;
+  appliedAt?: Date;
+}
+
 export type ActionStatus = 'success' | 'error';
 
 export interface ActionLogEntry {

@@ -21,6 +21,8 @@ const APP_TABLES = [
   'threads',
   'todos',
   'tool_runs',
+  'workflow_decisions',
+  'workflows',
 ];
 
 describe.skipIf(!testDatabaseUrl)('migrator', () => {
@@ -45,12 +47,17 @@ describe.skipIf(!testDatabaseUrl)('migrator', () => {
       ['0002_sync', 'Success'],
       ['0003_rag', 'Success'],
       ['0004_chat', 'Success'],
+      ['0005_workflows', 'Success'],
     ]);
     expect(await tables()).toEqual(APP_TABLES);
 
     expect(await migrateToLatest(t.db)).toEqual([]);
 
+    const workflowTables = ['workflow_decisions', 'workflows'];
+    expect((await migrateDown(t.db)).map((r) => r.migrationName)).toEqual(['0005_workflows']);
+    expect(await tables()).toEqual(APP_TABLES.filter((name) => !workflowTables.includes(name)));
     const chatTables = [
+      ...workflowTables,
       'chat_files',
       'chat_messages',
       'chat_sessions',

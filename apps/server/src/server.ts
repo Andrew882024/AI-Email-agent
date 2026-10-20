@@ -87,6 +87,7 @@ const SSE_EVENTS: AppEventName[] = [
   'sync.status',
   'outbox.failed',
   'index.status',
+  'workflow.updated',
 ];
 
 const listQuery = z.object({

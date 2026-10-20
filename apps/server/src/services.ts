@@ -4,6 +4,8 @@ import {
   ActionLogger,
   ChatAgent,
   ChatFileStore,
+  createWorkflowTools,
+  WorkflowEngine,
   GeminiProvider,
   MemoryService,
   AesGcmSecretCipher,
@@ -54,6 +56,8 @@ export interface Services {
   indexModel?: string;
   /** The assistant, when an LLM is configured. */
   chat?: { agent: ChatAgent; files: ChatFileStore; memory: MemoryService };
+  /** Mail automations, when an LLM is configured. */
+  workflows?: WorkflowEngine;
   /** Stop background sync and close the database pool. */
   close(): Promise<void>;
 }
@@ -126,8 +130,17 @@ export function createServices(config: AppConfig, host: HostCapabilities): Servi
   );
 
   let chat: Services['chat'];
+  let workflows: WorkflowEngine | undefined;
   if (config.geminiApiKey) {
     const llm = new GeminiProvider({ apiKey: config.geminiApiKey, model: config.llm.model });
+    workflows = new WorkflowEngine({ repos, llm, embeddings, tools, events, logger });
+    tools.register(...createWorkflowTools(workflows, repos));
+    // Persistent workflows decide every new email as sync brings it in.
+    const engine = workflows;
+    events.on(
+      'message.added',
+      ({ accountId, messageIds }) => void engine.enqueue(accountId, messageIds),
+    );
     const memory = new MemoryService({ repos, llm, embeddings, actions, logger });
     const files = new ChatFileStore(repos.chatFiles, join(config.dataDir, 'chat-files'));
     chat = { agent: new ChatAgent({ repos, llm, tools, files, memory, logger }), files, memory };
@@ -144,9 +157,11 @@ export function createServices(config: AppConfig, host: HostCapabilities): Servi
     tools,
     indexModel: indexer?.model,
     chat,
+    workflows,
     async close() {
       await scheduler.stop();
       await chat?.agent.idle(); // let memory updates finish
+      await workflows?.idle(); // and workflow runs on new mail
       await db.destroy();
     },
   };

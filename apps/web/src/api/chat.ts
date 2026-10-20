@@ -24,6 +24,8 @@ export interface ToolRun {
   tool: string;
   input: Record<string, unknown>;
   status: 'awaiting_approval' | 'done' | 'error' | 'rejected';
+  /** For waiting runs: { description } of the approval request. */
+  result?: unknown;
 }
 
 export interface EmailDraft {

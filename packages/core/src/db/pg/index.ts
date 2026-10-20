@@ -9,6 +9,7 @@ import { PgOAuthTokenRepository } from './oauth-token-repository.js';
 import { PgOutboxRepository } from './outbox-repository.js';
 import { PgSyncStateRepository } from './sync-state-repository.js';
 import { PgVectorStore } from './vector-store.js';
+import { PgWorkflowRepository } from './workflow-repository.js';
 import { PgTodoRepository } from './todo-repository.js';
 
 /** Embedding size; fixed by migration 0003's vector column. */
@@ -28,5 +29,6 @@ export function createPgRepositories(db: Db): Repositories {
     chats: new PgChatRepository(db),
     memory: new PgMemoryRepository(db),
     chatFiles: new PgChatFileRepository(db),
+    workflows: new PgWorkflowRepository(db),
   };
 }

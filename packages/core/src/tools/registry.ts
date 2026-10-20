@@ -23,6 +23,10 @@ export interface Tool<S extends z.ZodType = z.ZodType, O = unknown> {
   targets?: (input: z.output<S>) => string[];
   /** What the action log records as params (default: the whole input). Use to drop bodies/files. */
   logParams?: (input: z.output<S>) => unknown;
+  /** 'always': an assistant must get the user's approval before every call. */
+  approval?: 'always';
+  /** How an approval request reads ("apply workflow X to 12 emails"). */
+  approvalText?: (ctx: ToolContext, input: z.output<S>) => Promise<string>;
   handler: (ctx: ToolContext, input: z.output<S>) => Promise<O>;
 }
 
@@ -49,6 +53,7 @@ export interface ToolInfo {
   name: string;
   description: string;
   sideEffect: SideEffect;
+  approval?: 'always';
   /** JSON Schema of the input (usable as an LLM function declaration). */
   inputSchema: unknown;
 }
@@ -87,8 +92,22 @@ export class ToolRegistry {
       name: t.name,
       description: t.description,
       sideEffect: t.sideEffect,
+      ...(t.approval && { approval: t.approval }),
       inputSchema: z.toJSONSchema(t.input, { io: 'input' }),
     }));
+  }
+
+  /** The tool's own wording for an approval request, if it has one and the input is valid. */
+  async approvalText(
+    name: string,
+    ctx: ToolContext,
+    rawInput: unknown,
+  ): Promise<string | undefined> {
+    const tool = this.tools.get(name);
+    if (!tool?.approvalText) return undefined;
+    const parsed = tool.input.safeParse(rawInput ?? {});
+    if (!parsed.success) return undefined;
+    return tool.approvalText(ctx, parsed.data).catch(() => undefined);
   }
 
   async invoke(name: string, ctx: ToolContext, rawInput: unknown): Promise<unknown> {
