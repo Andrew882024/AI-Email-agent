@@ -18,6 +18,7 @@
     "db:down": "docker compose down",
     "db:migrate": "pnpm --filter @ai-email/core migrate",
     "auth": "pnpm --filter @ai-email/core auth",
+    "sync": "pnpm --filter @ai-email/core sync",
     "doctor": "pnpm --filter @ai-email/core doctor"
   },
   "devDependencies": {

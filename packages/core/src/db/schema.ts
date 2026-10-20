@@ -87,8 +87,8 @@ export interface TodosTable {
   id: Generated<string>;
   account_id: string;
   message_id: string | null;
-  google_task_id: string;
-  tasklist_id: string;
+  google_task_id: string | null;
+  tasklist_id: string | null;
   title: string;
   status: Generated<'needsAction' | 'completed'>;
   due: Date | null;
@@ -123,6 +123,17 @@ export interface ActionLogsTable {
   duration_ms: number | null;
 }
 
+export interface SyncStateTable {
+  account_id: string;
+  full_sync_started_at: Date | null;
+  full_sync_history_id: string | null;
+  full_sync_page_token: string | null;
+  full_sync_window_start: Date | null;
+  full_sync_count: Generated<number>;
+  tasks_synced_at: Date | null;
+  updated_at: Generated<Date>;
+}
+
 export interface Database {
   accounts: AccountsTable;
   oauth_tokens: OAuthTokensTable;
@@ -134,4 +145,5 @@ export interface Database {
   todos: TodosTable;
   outbox_ops: OutboxOpsTable;
   action_logs: ActionLogsTable;
+  sync_state: SyncStateTable;
 }

@@ -12,6 +12,7 @@ const APP_TABLES = [
   'messages',
   'oauth_tokens',
   'outbox_ops',
+  'sync_state',
   'threads',
   'todos',
 ];
@@ -33,13 +34,18 @@ describe.skipIf(!testDatabaseUrl)('migrator', () => {
 
   it('migrates up, down and up again', async () => {
     const up = await migrateToLatest(t.db);
-    expect(up.map((r) => [r.migrationName, r.status])).toEqual([['0001_init', 'Success']]);
+    expect(up.map((r) => [r.migrationName, r.status])).toEqual([
+      ['0001_init', 'Success'],
+      ['0002_sync', 'Success'],
+    ]);
     expect(await tables()).toEqual(APP_TABLES);
 
     expect(await migrateToLatest(t.db)).toEqual([]);
 
     const down = await migrateDown(t.db);
-    expect(down.map((r) => [r.direction, r.status])).toEqual([['Down', 'Success']]);
+    expect(down.map((r) => [r.migrationName, r.direction])).toEqual([['0002_sync', 'Down']]);
+    expect(await tables()).toEqual(APP_TABLES.filter((name) => name !== 'sync_state'));
+    await migrateDown(t.db);
     expect(await tables()).toEqual([]);
 
     await migrateToLatest(t.db);

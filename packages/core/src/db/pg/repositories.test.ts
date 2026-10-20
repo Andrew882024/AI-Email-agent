@@ -45,6 +45,7 @@ describe.skipIf(!testDatabaseUrl)('Postgres repositories', () => {
   beforeEach(async () => {
     await sql`truncate accounts cascade`.execute(t.db);
     await sql`truncate action_logs`.execute(t.db);
+    await sql`truncate outbox_ops`.execute(t.db);
     accountId = (await repos.accounts.upsert({ email: 'me@example.com', googleSub: 'sub-1' })).id;
   });
 
@@ -309,6 +310,29 @@ describe.skipIf(!testDatabaseUrl)('Postgres repositories', () => {
       expect(await thread()).toBeUndefined();
     });
 
+    it('sweeps messages not refreshed by a resync, within the window only', async () => {
+      await repos.messages.upsertMany(accountId, [
+        message('old-gone', { internalDate: new Date('2020-01-01T00:00:00Z') }),
+        message('gone', { threadId: 'T1', internalDate: at(1) }),
+        message('kept', { threadId: 'T1', internalDate: at(2) }),
+      ]);
+      // Same clock as updated_at (the DB's), like the real full sync uses.
+      const { startedAt: resyncStarted } = await repos.syncState.beginFullSync(accountId, {
+        historyId: '1',
+      });
+      await repos.messages.upsertMany(accountId, [
+        message('kept', { threadId: 'T1', internalDate: at(2) }),
+      ]);
+
+      const swept = await repos.messages.sweepStale(accountId, {
+        updatedBefore: resyncStarted,
+        receivedSince: new Date('2025-01-01T00:00:00Z'),
+      });
+      expect(swept).toEqual(['gone']);
+      expect(await repos.messages.getById(accountId, 'old-gone')).toBeDefined();
+      expect(await repos.messages.getById(accountId, 'kept')).toBeDefined();
+    });
+
     it('counts total and unread per label', async () => {
       await repos.messages.upsertMany(accountId, [
         message('m1', { labelIds: ['INBOX', 'UNREAD'] }),
@@ -334,6 +358,18 @@ describe.skipIf(!testDatabaseUrl)('Postgres repositories', () => {
         due: new Date('2026-05-01T00:00:00Z'),
       });
       expect(todo).toMatchObject({ status: 'needsAction', title: 'Pay invoice' });
+      const pending = await repos.todos.create({
+        accountId,
+        messageId: 'm2',
+        title: 'Not pushed yet',
+      });
+      expect(pending).toMatchObject({ googleTaskId: undefined, tasklistId: undefined });
+      expect(
+        await repos.todos.update(pending.id, { googleTaskId: 'task-2', tasklistId: 'list-1' }),
+      ).toMatchObject({
+        googleTaskId: 'task-2',
+        tasklistId: 'list-1',
+      });
       expect((await repos.todos.getByGoogleTaskId(accountId, 'task-1'))?.id).toBe(todo.id);
       expect(await repos.todos.list(accountId, { messageId: 'm1' })).toHaveLength(1);
 
@@ -344,7 +380,9 @@ describe.skipIf(!testDatabaseUrl)('Postgres repositories', () => {
         due: null,
       });
       expect(updated).toMatchObject({ status: 'completed', completedAt: done, due: undefined });
-      expect(await repos.todos.list(accountId, { status: 'needsAction' })).toEqual([]);
+      expect(
+        (await repos.todos.list(accountId, { status: 'needsAction' })).map((t) => t.id),
+      ).toEqual([pending.id]);
 
       await repos.todos.delete(todo.id);
       expect(await repos.todos.getById(todo.id)).toBeUndefined();
@@ -352,39 +390,77 @@ describe.skipIf(!testDatabaseUrl)('Postgres repositories', () => {
   });
 
   describe('outbox', () => {
-    it('claims due ops FIFO, never twice, and supports retry, done, failed and requeue', async () => {
+    it('claims strictly FIFO per account, one op at a time', async () => {
       const a = await repos.outbox.enqueue(accountId, 'modify_labels', {
         ids: ['m1'],
         add: ['STARRED'],
       });
       const b = await repos.outbox.enqueue(accountId, 'send', { to: ['x@example.com'] });
-      const c = await repos.outbox.enqueue(accountId, 'send', {});
+      const other = (await repos.accounts.upsert({ email: 'o@example.com', googleSub: 'sub-2' }))
+        .id;
+      const c = await repos.outbox.enqueue(other, 'send', {});
 
-      const [first, second] = await Promise.all([
-        repos.outbox.claimBatch(2),
-        repos.outbox.claimBatch(2),
-      ]);
-      const claimed = [...first, ...second].map((op) => op.id).sort();
-      expect(claimed).toEqual([a.id, b.id, c.id].sort());
-      expect(
-        first.concat(second).every((op) => op.status === 'in_progress' && op.attempts === 1),
-      ).toBe(true);
-      expect(
-        first.find((op) => op.id === a.id)?.payload ?? second.find((op) => op.id === a.id)?.payload,
-      ).toEqual({ ids: ['m1'], add: ['STARRED'] });
+      const first = await repos.outbox.claimNext(accountId);
+      expect(first).toMatchObject({ id: a.id, status: 'in_progress', attempts: 1 });
+      expect(first?.payload).toEqual({ ids: ['m1'], add: ['STARRED'] });
+      // b waits while a is in progress; other accounts are independent.
+      expect(await repos.outbox.claimNext(accountId)).toBeUndefined();
+      expect((await repos.outbox.claimNext(other))?.id).toBe(c.id);
 
-      await repos.outbox.markRetry(a.id, 'rate limited', new Date(Date.now() + 60_000));
-      await repos.outbox.markDone(b.id);
-      await repos.outbox.markFailed(c.id, 'bad request');
-      expect(await repos.outbox.claimBatch(10)).toEqual([]); // a is not due yet
+      // a waits for a retry: b must keep waiting behind it.
+      await repos.outbox.markRetry(a.id, 'rate limited', 60_000);
+      expect(await repos.outbox.claimNext(accountId)).toBeUndefined();
+      expect((await repos.outbox.listActive(accountId)).map((op) => op.id)).toEqual([a.id, b.id]);
 
-      await repos.outbox.markRetry(a.id, 'rate limited', new Date(Date.now() - 1000));
-      const retried = await repos.outbox.claimBatch(10);
-      expect(retried).toHaveLength(1);
-      expect(retried[0]).toMatchObject({ id: a.id, attempts: 2, lastError: 'rate limited' });
+      await repos.outbox.markRetry(a.id, 'rate limited', 0);
+      expect(await repos.outbox.claimNext(accountId)).toMatchObject({
+        id: a.id,
+        attempts: 2,
+        lastError: 'rate limited',
+      });
+      await repos.outbox.markDone(a.id);
+      expect((await repos.outbox.claimNext(accountId))?.id).toBe(b.id);
 
-      expect(await repos.outbox.requeueInProgress()).toBe(1);
-      expect((await repos.outbox.claimBatch(10)).map((op) => op.id)).toEqual([a.id]);
+      // A failed op no longer blocks the queue.
+      await repos.outbox.markFailed(b.id, 'bad request');
+      expect(await repos.outbox.listActive(accountId)).toEqual([]);
+      const d = await repos.outbox.enqueue(accountId, 'send', {});
+      expect((await repos.outbox.claimNext(accountId))?.id).toBe(d.id);
+
+      expect(await repos.outbox.requeueInProgress()).toBe(2); // d and c
+      expect((await repos.outbox.claimNext(accountId))?.id).toBe(d.id);
+    });
+  });
+
+  describe('sync state', () => {
+    it('stores, clears the full-sync checkpoint and keeps the tasks cursor', async () => {
+      expect(await repos.syncState.get(accountId)).toEqual({ accountId, tasksSyncedAt: undefined });
+      const checkpoint = {
+        startedAt: new Date('2026-01-01T00:00:00Z'),
+        historyId: '100',
+        pageToken: 'p2',
+        windowStart: new Date('2025-01-01T00:00:00Z'),
+        synced: 500,
+      };
+      await repos.syncState.update(accountId, { fullSync: checkpoint });
+      const tasksAt = new Date('2026-01-02T00:00:00Z');
+      await repos.syncState.update(accountId, { tasksSyncedAt: tasksAt });
+      expect(await repos.syncState.get(accountId)).toEqual({
+        accountId,
+        fullSync: checkpoint,
+        tasksSyncedAt: tasksAt,
+      });
+      await repos.syncState.update(accountId, { fullSync: null });
+      expect(await repos.syncState.get(accountId)).toEqual({ accountId, tasksSyncedAt: tasksAt });
+
+      const begun = await repos.syncState.beginFullSync(accountId, { historyId: '200' });
+      const { rows } = await sql<{ now: Date }>`select now() as now`.execute(t.db);
+      expect(begun.startedAt.getTime()).toBeLessThanOrEqual(rows[0]!.now.getTime());
+      expect(await repos.syncState.get(accountId)).toEqual({
+        accountId,
+        fullSync: { startedAt: begun.startedAt, historyId: '200', synced: 0 },
+        tasksSyncedAt: tasksAt,
+      });
     });
   });
 

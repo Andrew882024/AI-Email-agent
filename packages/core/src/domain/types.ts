@@ -92,8 +92,9 @@ export interface Todo {
   id: string;
   accountId: string;
   messageId?: string;
-  googleTaskId: string;
-  tasklistId: string;
+  /** Unset until the outbox worker has created the Google Task. */
+  googleTaskId?: string;
+  tasklistId?: string;
   title: string;
   status: TodoStatus;
   due?: Date;
@@ -116,6 +117,27 @@ export interface OutboxOp {
   nextAttemptAt: Date;
   createdAt: Date;
   updatedAt: Date;
+}
+
+/** Progress of a resumable full sync. */
+export interface FullSyncCheckpoint {
+  startedAt: Date;
+  /** Mailbox historyId captured before listing; incremental sync resumes from here. */
+  historyId: string;
+  /** Next messages.list page; unset before the first page. */
+  pageToken?: string;
+  /** Only messages received on/after this are synced; unset = whole mailbox. */
+  windowStart?: Date;
+  /** Messages stored so far. */
+  synced: number;
+}
+
+export interface SyncState {
+  accountId: string;
+  /** Set while a full sync is in progress (also across restarts). */
+  fullSync?: FullSyncCheckpoint;
+  /** Google Tasks were polled up to this time. */
+  tasksSyncedAt?: Date;
 }
 
 export type ActionStatus = 'success' | 'error';

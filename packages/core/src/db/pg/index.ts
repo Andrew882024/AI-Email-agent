@@ -6,6 +6,7 @@ import { PgLabelRepository } from './label-repository.js';
 import { PgMessageRepository } from './message-repository.js';
 import { PgOAuthTokenRepository } from './oauth-token-repository.js';
 import { PgOutboxRepository } from './outbox-repository.js';
+import { PgSyncStateRepository } from './sync-state-repository.js';
 import { PgTodoRepository } from './todo-repository.js';
 
 export function createPgRepositories(db: Db): Repositories {
@@ -17,5 +18,6 @@ export function createPgRepositories(db: Db): Repositories {
     todos: new PgTodoRepository(db),
     outbox: new PgOutboxRepository(db),
     actionLogs: new PgActionLogRepository(db),
+    syncState: new PgSyncStateRepository(db),
   };
 }

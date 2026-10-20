@@ -15,6 +15,7 @@ describe('parseConfig', () => {
       serverPort: 4317,
       dataDir: join(homedir(), '.ai-email-agent'),
       google: { clientId: 'id', clientSecret: 'secret' },
+      sync: { windowDays: 365, pollSeconds: 30, gmailQuotaPerMinute: 15_000 },
     });
     expect(config.geminiApiKey).toBeUndefined();
   });

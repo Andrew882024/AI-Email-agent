@@ -9,8 +9,8 @@ function toTodo(row: Selectable<TodosTable>): Todo {
     id: row.id,
     accountId: row.account_id,
     messageId: row.message_id ?? undefined,
-    googleTaskId: row.google_task_id,
-    tasklistId: row.tasklist_id,
+    googleTaskId: row.google_task_id ?? undefined,
+    tasklistId: row.tasklist_id ?? undefined,
     title: row.title,
     status: row.status,
     due: row.due ?? undefined,
@@ -29,8 +29,8 @@ export class PgTodoRepository implements TodoRepository {
       .values({
         account_id: input.accountId,
         message_id: input.messageId ?? null,
-        google_task_id: input.googleTaskId,
-        tasklist_id: input.tasklistId,
+        google_task_id: input.googleTaskId ?? null,
+        tasklist_id: input.tasklistId ?? null,
         title: input.title,
         ...(input.status && { status: input.status }),
         due: input.due ?? null,
@@ -71,6 +71,8 @@ export class PgTodoRepository implements TodoRepository {
     const row = await this.db
       .updateTable('todos')
       .set({
+        ...(patch.googleTaskId !== undefined && { google_task_id: patch.googleTaskId }),
+        ...(patch.tasklistId !== undefined && { tasklist_id: patch.tasklistId }),
         ...(patch.title !== undefined && { title: patch.title }),
         ...(patch.status !== undefined && { status: patch.status }),
         ...(patch.due !== undefined && { due: patch.due }),

@@ -3,7 +3,6 @@ import type { OutboxOp } from '../../domain/types.js';
 import type { Db } from '../connection.js';
 import type { OutboxRepository } from '../repositories.js';
 import type { OutboxOpsTable } from '../schema.js';
-import { clamp } from './util.js';
 
 function toOp(row: Selectable<OutboxOpsTable>): OutboxOp {
   return {
@@ -32,28 +31,40 @@ export class PgOutboxRepository implements OutboxRepository {
     return toOp(row);
   }
 
-  async claimBatch(limit: number) {
-    const due = this.db
+  async claimNext(accountId: string) {
+    // FOR UPDATE (not SKIP LOCKED): a locked head must block, never be skipped.
+    const head = this.db
       .selectFrom('outbox_ops')
       .select('id')
-      .where('status', '=', 'pending')
-      .where('next_attempt_at', '<=', sql<Date>`now()`)
+      .where('account_id', '=', accountId)
+      .where('status', 'in', ['pending', 'in_progress'])
       .orderBy('id')
-      .limit(clamp(limit, 1, 1000))
-      .forUpdate()
-      .skipLocked();
-    const rows = await this.db
+      .limit(1)
+      .forUpdate();
+    const row = await this.db
       .updateTable('outbox_ops')
       .set((eb) => ({
         status: 'in_progress',
         attempts: eb('attempts', '+', 1),
         updated_at: sql`now()`,
       }))
-      .where('id', 'in', due)
+      .where('id', '=', head)
+      .where('status', '=', 'pending')
+      .where('next_attempt_at', '<=', sql<Date>`now()`)
       .returningAll()
+      .executeTakeFirst();
+    return row && toOp(row);
+  }
+
+  async listActive(accountId: string) {
+    const rows = await this.db
+      .selectFrom('outbox_ops')
+      .selectAll()
+      .where('account_id', '=', accountId)
+      .where('status', 'in', ['pending', 'in_progress'])
+      .orderBy('id')
       .execute();
-    // RETURNING order is unspecified; ids are monotonic so this restores FIFO.
-    return rows.map(toOp).sort((a, b) => (BigInt(a.id) < BigInt(b.id) ? -1 : 1));
+    return rows.map(toOp);
   }
 
   async markDone(id: string) {
@@ -64,13 +75,13 @@ export class PgOutboxRepository implements OutboxRepository {
       .execute();
   }
 
-  async markRetry(id: string, error: string, nextAttemptAt: Date) {
+  async markRetry(id: string, error: string, delayMs: number) {
     await this.db
       .updateTable('outbox_ops')
       .set({
         status: 'pending',
         last_error: error,
-        next_attempt_at: nextAttemptAt,
+        next_attempt_at: sql<Date>`now() + make_interval(secs => ${Math.max(0, delayMs) / 1000})`,
         updated_at: sql`now()`,
       })
       .where('id', '=', id)

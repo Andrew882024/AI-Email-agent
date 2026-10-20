@@ -15,6 +15,11 @@ const EnvSchema = z.object({
   APP_DATA_DIR: z.string().min(1).default(join(homedir(), '.ai-email-agent')),
   GOOGLE_CLIENT_ID: z.string().min(1),
   GOOGLE_CLIENT_SECRET: z.string().min(1),
+  /** Full sync covers mail received in the last N days; 0 = whole mailbox. */
+  SYNC_WINDOW_DAYS: z.coerce.number().int().min(0).default(365),
+  SYNC_POLL_SECONDS: z.coerce.number().int().min(5).default(30),
+  /** The GCP project's Gmail "units per minute per user" quota (Google default 15,000). */
+  GMAIL_QUOTA_UNITS_PER_MINUTE: z.coerce.number().int().min(60).default(15_000),
   APP_SECRET_KEY: optionalString,
   GEMINI_API_KEY: optionalString,
 });
@@ -27,6 +32,7 @@ export interface AppConfig {
   /** Root for local app files (logs, uploads). Electron overrides this with its userData path. */
   dataDir: string;
   google: { clientId: string; clientSecret: string };
+  sync: { windowDays: number; pollSeconds: number; gmailQuotaPerMinute: number };
   appSecretKey?: string;
   geminiApiKey?: string;
 }
@@ -51,6 +57,11 @@ export function parseConfig(env: Record<string, string | undefined>): AppConfig 
     serverPort: e.SERVER_PORT,
     dataDir: e.APP_DATA_DIR,
     google: { clientId: e.GOOGLE_CLIENT_ID, clientSecret: e.GOOGLE_CLIENT_SECRET },
+    sync: {
+      windowDays: e.SYNC_WINDOW_DAYS,
+      pollSeconds: e.SYNC_POLL_SECONDS,
+      gmailQuotaPerMinute: e.GMAIL_QUOTA_UNITS_PER_MINUTE,
+    },
     appSecretKey: e.APP_SECRET_KEY,
     geminiApiKey: e.GEMINI_API_KEY,
   };

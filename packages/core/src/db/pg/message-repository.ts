@@ -398,6 +398,18 @@ export class PgMessageRepository implements MessageRepository {
     });
   }
 
+  async sweepStale(accountId: string, options: { updatedBefore: Date; receivedSince?: Date }) {
+    let q = this.db
+      .selectFrom('messages')
+      .select('id')
+      .where('account_id', '=', accountId)
+      .where('updated_at', '<', options.updatedBefore);
+    if (options.receivedSince) q = q.where('internal_date', '>=', options.receivedSince);
+    const ids = (await q.execute()).map((r) => r.id);
+    await this.deleteMany(accountId, ids);
+    return ids;
+  }
+
   async countByLabel(accountId: string) {
     const rows = await this.db
       .selectFrom('message_labels as ml')

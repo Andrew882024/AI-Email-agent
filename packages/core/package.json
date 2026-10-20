@@ -14,9 +14,13 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "doctor": "pnpm run build && node dist/cli/doctor.js",
     "migrate": "pnpm run build && node dist/cli/migrate.js",
-    "auth": "pnpm run build && node dist/cli/auth.js"
+    "auth": "pnpm run build && node dist/cli/auth.js",
+    "sync": "pnpm run build && node dist/cli/sync.js"
   },
   "dependencies": {
+    "@googleapis/gmail": "^22.0.2",
+    "@googleapis/tasks": "^17.0.1",
+    "addressparser": "^1.0.1",
     "google-auth-library": "^11.3.1",
     "kysely": "0.29.7",
     "open": "^11.0.4",
@@ -25,6 +29,7 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@types/addressparser": "^1.0.3",
     "@types/pg": "^8.23.1"
   }
 }

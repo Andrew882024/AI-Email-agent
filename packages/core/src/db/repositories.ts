@@ -11,6 +11,8 @@ import type {
   MessageUpsert,
   OutboxOp,
   Page,
+  FullSyncCheckpoint,
+  SyncState,
   Todo,
   TodoStatus,
 } from '../domain/types.js';
@@ -88,20 +90,30 @@ export interface MessageRepository {
   ): Promise<void>;
   /** Delete messages; threads left empty are deleted too. */
   deleteMany(accountId: string, ids: string[]): Promise<void>;
+  /**
+   * After a full resync: delete messages not refreshed since `updatedBefore` (gone from Gmail),
+   * limited to those received on/after `receivedSince` when given. Returns the deleted ids.
+   */
+  sweepStale(
+    accountId: string,
+    options: { updatedBefore: Date; receivedSince?: Date },
+  ): Promise<string[]>;
   countByLabel(accountId: string): Promise<Record<string, LabelCounts>>;
 }
 
 export interface NewTodo {
   accountId: string;
   messageId?: string;
-  googleTaskId: string;
-  tasklistId: string;
+  googleTaskId?: string;
+  tasklistId?: string;
   title: string;
   status?: TodoStatus;
   due?: Date;
 }
 
 export interface TodoPatch {
+  googleTaskId?: string;
+  tasklistId?: string;
   title?: string;
   status?: TodoStatus;
   /** null clears. */
@@ -122,13 +134,19 @@ export interface TodoRepository {
 export interface OutboxRepository {
   enqueue(accountId: string, op: string, payload: unknown): Promise<OutboxOp>;
   /**
-   * Atomically take up to `limit` due pending ops (oldest first), mark them in_progress and bump
-   * attempts. Concurrent callers never receive the same op.
+   * Claim the account's oldest unfinished op if it is pending and due: mark it in_progress and bump
+   * attempts. Strict FIFO per account: while the oldest op waits for a retry, later ops wait too,
+   * so changes reach Google in the order they were made.
    */
-  claimBatch(limit: number): Promise<OutboxOp[]>;
+  claimNext(accountId: string): Promise<OutboxOp | undefined>;
+  /** Pending and in-progress ops of the account, oldest first. */
+  listActive(accountId: string): Promise<OutboxOp[]>;
   markDone(id: string): Promise<void>;
-  /** Back to pending, to be retried at `nextAttemptAt`. */
-  markRetry(id: string, error: string, nextAttemptAt: Date): Promise<void>;
+  /**
+   * Back to pending, retried after `delayMs`. Relative, so the due time is computed on the
+   * database clock that claimNext() compares against.
+   */
+  markRetry(id: string, error: string, delayMs: number): Promise<void>;
   /** Give up permanently. */
   markFailed(id: string, error: string): Promise<void>;
   /** Return ops stuck in_progress (e.g. after a crash) to pending. Returns how many. */
@@ -164,6 +182,23 @@ export interface ActionLogRepository {
   query(filter: ActionLogQuery): Promise<Page<ActionLogEntry>>;
 }
 
+export interface SyncStateRepository {
+  get(accountId: string): Promise<SyncState>;
+  /**
+   * Start a full-sync checkpoint. startedAt comes from the database clock, the same clock that
+   * stamps messages.updated_at, so the end-of-sync sweep can't be fooled by host/DB clock skew.
+   */
+  beginFullSync(
+    accountId: string,
+    input: { historyId: string; windowStart?: Date },
+  ): Promise<FullSyncCheckpoint>;
+  /** `fullSync: null` clears the checkpoint (full sync finished). */
+  update(
+    accountId: string,
+    patch: { fullSync?: FullSyncCheckpoint | null; tasksSyncedAt?: Date },
+  ): Promise<void>;
+}
+
 export interface Repositories {
   accounts: AccountRepository;
   oauthTokens: OAuthTokenRepository;
@@ -172,4 +207,5 @@ export interface Repositories {
   todos: TodoRepository;
   outbox: OutboxRepository;
   actionLogs: ActionLogRepository;
+  syncState: SyncStateRepository;
 }
