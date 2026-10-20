@@ -165,6 +165,83 @@ export interface SyncState {
   tasksSyncedAt?: Date;
 }
 
+/** A chat message part as stored: files are referenced by id, not inlined. */
+export type StoredPart =
+  | { type: 'text'; text: string; signature?: string }
+  | { type: 'file_ref'; fileId: string; name: string; mimeType: string }
+  | {
+      type: 'tool_call';
+      id?: string;
+      name: string;
+      args: Record<string, unknown>;
+      signature?: string;
+    }
+  | { type: 'tool_result'; id?: string; name: string; result: unknown; isError?: boolean };
+
+export interface ChatSession {
+  id: string;
+  accountId: string;
+  title: string;
+  /** Rolling summary of messages up to summarizedThrough. */
+  summary?: string;
+  summarizedThrough?: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface ChatMessage {
+  /** Monotonic; also orders the conversation. */
+  id: string;
+  sessionId: string;
+  role: 'user' | 'model';
+  parts: StoredPart[];
+  createdAt: Date;
+}
+
+export type ToolRunStatus = 'awaiting_approval' | 'done' | 'error' | 'rejected';
+
+/** One tool call made by the assistant in a model message. */
+export interface ToolRun {
+  id: string;
+  sessionId: string;
+  messageId: string;
+  /** Index of the call within the model message. */
+  position: number;
+  callId?: string;
+  tool: string;
+  input: Record<string, unknown>;
+  status: ToolRunStatus;
+  result?: unknown;
+  createdAt: Date;
+  resolvedAt?: Date;
+}
+
+export type MemoryCategory = 'preference' | 'identity' | 'relationship' | 'rule' | 'other';
+
+/** A long-lived fact about the user, shared by every chat session of the account. */
+export interface MemoryItem {
+  id: string;
+  accountId: string;
+  content: string;
+  category: MemoryCategory;
+  sourceSessionId?: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface ChatFile {
+  id: string;
+  accountId: string;
+  filename: string;
+  mimeType: string;
+  size: number;
+  /** Absolute path of the stored bytes. */
+  storagePath: string;
+  /** Text extracted for formats the model can't read directly (docx, xlsx, txt, ...). */
+  extractedText?: string;
+  createdAt: Date;
+}
+
 export type ActionStatus = 'success' | 'error';
 
 export interface ActionLogEntry {

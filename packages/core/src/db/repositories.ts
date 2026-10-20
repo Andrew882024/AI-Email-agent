@@ -13,6 +13,14 @@ import type {
   Page,
   FullSyncCheckpoint,
   SyncState,
+  ChatFile,
+  ChatMessage,
+  ChatSession,
+  MemoryCategory,
+  MemoryItem,
+  StoredPart,
+  ToolRun,
+  ToolRunStatus,
   ThreadSummary,
   Todo,
   TodoStatus,
@@ -253,6 +261,74 @@ export interface SyncStateRepository {
   ): Promise<void>;
 }
 
+export interface ChatRepository {
+  createSession(accountId: string, title?: string): Promise<ChatSession>;
+  /** Most recently active first. */
+  listSessions(accountId: string): Promise<ChatSession[]>;
+  getSession(id: string): Promise<ChatSession | undefined>;
+  updateSession(
+    id: string,
+    patch: { title?: string; summary?: string; summarizedThrough?: string },
+  ): Promise<void>;
+  deleteSession(id: string): Promise<void>;
+  /** Appends a message and marks the session active. */
+  appendMessage(
+    sessionId: string,
+    role: 'user' | 'model',
+    parts: StoredPart[],
+  ): Promise<ChatMessage>;
+  /** In order; only messages after `afterId` when given. */
+  listMessages(sessionId: string, options?: { afterId?: string }): Promise<ChatMessage[]>;
+  createToolRuns(
+    sessionId: string,
+    messageId: string,
+    runs: {
+      position: number;
+      callId?: string;
+      tool: string;
+      input: Record<string, unknown>;
+      status: ToolRunStatus;
+      result?: unknown;
+    }[],
+  ): Promise<ToolRun[]>;
+  getToolRun(id: string): Promise<ToolRun | undefined>;
+  /** Ordered by position. */
+  listToolRuns(messageId: string): Promise<ToolRun[]>;
+  resolveToolRun(
+    id: string,
+    outcome: { status: Exclude<ToolRunStatus, 'awaiting_approval'>; result: unknown },
+  ): Promise<void>;
+  /** Tool runs of the session still waiting for the user. */
+  awaitingToolRuns(sessionId: string): Promise<ToolRun[]>;
+}
+
+export interface MemoryRepository {
+  /** Most recently updated first. */
+  list(accountId: string): Promise<MemoryItem[]>;
+  get(id: string): Promise<MemoryItem | undefined>;
+  add(
+    accountId: string,
+    item: {
+      content: string;
+      category: MemoryCategory;
+      sourceSessionId?: string;
+      embedding?: number[];
+    },
+  ): Promise<MemoryItem>;
+  update(
+    id: string,
+    patch: { content: string; embedding?: number[] },
+  ): Promise<MemoryItem | undefined>;
+  delete(id: string): Promise<void>;
+  /** Most similar items first (items without an embedding are skipped). */
+  search(accountId: string, embedding: number[], limit: number): Promise<MemoryItem[]>;
+}
+
+export interface ChatFileRepository {
+  create(file: Omit<ChatFile, 'id' | 'createdAt'>): Promise<ChatFile>;
+  get(id: string): Promise<ChatFile | undefined>;
+}
+
 export interface Repositories {
   accounts: AccountRepository;
   oauthTokens: OAuthTokenRepository;
@@ -263,4 +339,7 @@ export interface Repositories {
   actionLogs: ActionLogRepository;
   syncState: SyncStateRepository;
   vectors: VectorStore;
+  chats: ChatRepository;
+  memory: MemoryRepository;
+  chatFiles: ChatFileRepository;
 }

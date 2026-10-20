@@ -7,7 +7,7 @@ import {
 } from '@google/genai';
 import { type RetryOptions, withRetry } from '../google/retry.js';
 import {
-  type ChatMessage,
+  type LLMMessage,
   type EmbeddingProvider,
   type EmbeddingTask,
   type GenerateRequest,
@@ -26,7 +26,7 @@ export function toGeminiSchema(schema: unknown): unknown {
   return rest;
 }
 
-export function toGeminiContents(messages: ChatMessage[]): Content[] {
+export function toGeminiContents(messages: LLMMessage[]): Content[] {
   return messages.map((message) => ({
     role: message.role,
     parts: message.parts.map((part): GeminiPart => {

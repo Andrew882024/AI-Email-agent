@@ -33,3 +33,6 @@ export * from './llm/structured.js';
 export * from './rag/chunk.js';
 export * from './rag/indexer.js';
 export * from './rag/hybrid-search.js';
+export * from './agent/files.js';
+export * from './agent/memory.js';
+export * from './agent/agent.js';

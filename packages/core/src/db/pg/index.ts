@@ -1,6 +1,7 @@
 import type { Db } from '../connection.js';
 import type { Repositories } from '../repositories.js';
 import { PgAccountRepository } from './account-repository.js';
+import { PgChatFileRepository, PgChatRepository, PgMemoryRepository } from './chat-repository.js';
 import { PgActionLogRepository } from './action-log-repository.js';
 import { PgLabelRepository } from './label-repository.js';
 import { PgMessageRepository } from './message-repository.js';
@@ -24,5 +25,8 @@ export function createPgRepositories(db: Db): Repositories {
     actionLogs: new PgActionLogRepository(db),
     syncState: new PgSyncStateRepository(db),
     vectors: new PgVectorStore(db, EMBEDDING_DIMENSIONS),
+    chats: new PgChatRepository(db),
+    memory: new PgMemoryRepository(db),
+    chatFiles: new PgChatFileRepository(db),
   };
 }

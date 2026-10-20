@@ -73,6 +73,10 @@ const attachments = z
   .describe('Files to attach (base64 content)');
 const listing = {
   label: z.string().optional().describe('Also require this label (name or id)'),
+  from: z
+    .string()
+    .optional()
+    .describe('Sender address or name contains this (e.g. "linkedin.com")'),
   limit: z.number().int().min(1).max(100).default(25),
   cursor: z.string().optional().describe('nextCursor from a previous page'),
 };
@@ -232,6 +236,7 @@ export function createEmailTools(deps: EmailToolDeps) {
       handler: async (ctx, i) =>
         repos.messages.list(ctx.accountId, {
           ...(await listQuery(ctx, i.view, i.label)),
+          from: i.from,
           limit: i.limit,
           cursor: i.cursor,
         }),
@@ -250,6 +255,7 @@ export function createEmailTools(deps: EmailToolDeps) {
       handler: async (ctx, i) =>
         repos.messages.listThreads(ctx.accountId, {
           ...(await listQuery(ctx, i.view, i.label)),
+          from: i.from,
           search: i.query,
           limit: i.limit,
           cursor: i.cursor,

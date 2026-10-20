@@ -7,8 +7,12 @@ const APP_TABLES = [
   'accounts',
   'action_logs',
   'attachments',
+  'chat_files',
+  'chat_messages',
+  'chat_sessions',
   'email_embeddings',
   'labels',
+  'memory_items',
   'message_labels',
   'messages',
   'oauth_tokens',
@@ -16,6 +20,7 @@ const APP_TABLES = [
   'sync_state',
   'threads',
   'todos',
+  'tool_runs',
 ];
 
 describe.skipIf(!testDatabaseUrl)('migrator', () => {
@@ -39,17 +44,31 @@ describe.skipIf(!testDatabaseUrl)('migrator', () => {
       ['0001_init', 'Success'],
       ['0002_sync', 'Success'],
       ['0003_rag', 'Success'],
+      ['0004_chat', 'Success'],
     ]);
     expect(await tables()).toEqual(APP_TABLES);
 
     expect(await migrateToLatest(t.db)).toEqual([]);
 
+    const chatTables = [
+      'chat_files',
+      'chat_messages',
+      'chat_sessions',
+      'memory_items',
+      'tool_runs',
+    ];
+    expect((await migrateDown(t.db)).map((r) => r.migrationName)).toEqual(['0004_chat']);
+    expect(await tables()).toEqual(APP_TABLES.filter((name) => !chatTables.includes(name)));
     expect((await migrateDown(t.db)).map((r) => r.migrationName)).toEqual(['0003_rag']);
-    expect(await tables()).toEqual(APP_TABLES.filter((name) => name !== 'email_embeddings'));
+    expect(await tables()).toEqual(
+      APP_TABLES.filter((name) => name !== 'email_embeddings' && !chatTables.includes(name)),
+    );
     const down = await migrateDown(t.db);
     expect(down.map((r) => [r.migrationName, r.direction])).toEqual([['0002_sync', 'Down']]);
     expect(await tables()).toEqual(
-      APP_TABLES.filter((name) => !['sync_state', 'email_embeddings'].includes(name)),
+      APP_TABLES.filter(
+        (name) => !['sync_state', 'email_embeddings', ...chatTables].includes(name),
+      ),
     );
     await migrateDown(t.db);
     expect(await tables()).toEqual([]);

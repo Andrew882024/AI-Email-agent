@@ -2,6 +2,10 @@
 import { join } from 'node:path';
 import {
   ActionLogger,
+  ChatAgent,
+  ChatFileStore,
+  GeminiProvider,
+  MemoryService,
   AesGcmSecretCipher,
   type AppConfig,
   type Db,
@@ -48,6 +52,8 @@ export interface Services {
   tools: ToolRegistry;
   /** Embedding model of the semantic index, when indexing is on. */
   indexModel?: string;
+  /** The assistant, when an LLM is configured. */
+  chat?: { agent: ChatAgent; files: ChatFileStore; memory: MemoryService };
   /** Stop background sync and close the database pool. */
   close(): Promise<void>;
 }
@@ -119,6 +125,14 @@ export function createServices(config: AppConfig, host: HostCapabilities): Servi
     ...createEmailTools({ repos, mailbox, gateways, events, search }),
   );
 
+  let chat: Services['chat'];
+  if (config.geminiApiKey) {
+    const llm = new GeminiProvider({ apiKey: config.geminiApiKey, model: config.llm.model });
+    const memory = new MemoryService({ repos, llm, embeddings, actions, logger });
+    const files = new ChatFileStore(repos.chatFiles, join(config.dataDir, 'chat-files'));
+    chat = { agent: new ChatAgent({ repos, llm, tools, files, memory, logger }), files, memory };
+  }
+
   return {
     config,
     logger,
@@ -129,8 +143,10 @@ export function createServices(config: AppConfig, host: HostCapabilities): Servi
     scheduler,
     tools,
     indexModel: indexer?.model,
+    chat,
     async close() {
       await scheduler.stop();
+      await chat?.agent.idle(); // let memory updates finish
       await db.destroy();
     },
   };

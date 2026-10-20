@@ -47,6 +47,8 @@ interface UiState {
   selected: string[];
   composes: ComposeDraft[];
   chatOpen: boolean;
+  /** The assistant conversation shown in the chat panel. */
+  chatSessionId?: string;
   toasts: Toast[];
   sync: { phase: SyncPhase; synced?: number; error?: string };
   reauthRequired: boolean;
@@ -61,6 +63,7 @@ interface UiState {
   updateCompose(id: number, patch: Partial<ComposeDraft>): void;
   closeCompose(id: number): void;
   toggleChat(): void;
+  setChatSession(id: string | undefined): void;
   toast(message: string, kind?: Toast['kind']): void;
   dismissToast(id: number): void;
   setSync(sync: UiState['sync']): void;
@@ -118,6 +121,7 @@ export const useUi = create<UiState>()((set) => ({
     set((s) => ({ composes: s.composes.map((c) => (c.id === id ? { ...c, ...patch } : c)) })),
   closeCompose: (id) => set((s) => ({ composes: s.composes.filter((c) => c.id !== id) })),
   toggleChat: () => set((s) => ({ chatOpen: !s.chatOpen })),
+  setChatSession: (chatSessionId) => set({ chatSessionId }),
   toast: (message, kind = 'info') =>
     set((s) => ({ toasts: [...s.toasts, { id: nextId++, message, kind }].slice(-4) })),
   dismissToast: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),

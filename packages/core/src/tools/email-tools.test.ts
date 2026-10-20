@@ -159,6 +159,7 @@ describe.skipIf(!testDatabaseUrl)('email tools', () => {
       expect(await ids({ view: 'archived' })).toEqual(['m3']);
       expect(await ids({ view: 'sent' })).toEqual(['m4']);
       expect(await ids({ view: 'all', label: 'invoices' })).toEqual(['m3']);
+      expect(await ids({ view: 'all', from: 'me@example' })).toEqual(['m4']);
       await expect(call('list_emails', { label: 'Nope' })).rejects.toMatchObject({
         code: 'not_found',
         message: expect.stringContaining('Invoices'),

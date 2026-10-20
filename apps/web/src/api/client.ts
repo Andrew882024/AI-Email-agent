@@ -11,7 +11,7 @@ export class ApiError extends Error {
 
 export async function api<T>(
   path: string,
-  init: { method?: 'GET' | 'POST'; body?: unknown } = {},
+  init: { method?: 'GET' | 'POST' | 'PATCH' | 'DELETE'; body?: unknown } = {},
 ): Promise<T> {
   const res = await fetch(path, {
     method: init.method ?? 'GET',

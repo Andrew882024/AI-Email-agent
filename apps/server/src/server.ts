@@ -2,6 +2,11 @@ import cors from '@fastify/cors';
 import fastifyStatic from '@fastify/static';
 import {
   type Account,
+  type AgentEvent,
+  type ChatAgent,
+  type ChatFileStore,
+  type MemoryService,
+  UnsupportedFileError,
   type Actor,
   type AppEventName,
   AuthFlowError,
@@ -31,6 +36,8 @@ export interface ServerDeps {
   logger: Logger;
   /** Embedding model of the semantic index, if indexing is on. */
   indexModel?: string;
+  /** The assistant; absent when no LLM is configured. */
+  chat?: { agent: ChatAgent; files: ChatFileStore; memory: MemoryService };
 }
 
 export interface ServerOptions {
@@ -89,6 +96,17 @@ const listQuery = z.object({
   limit: z.coerce.number().optional(),
   cursor: z.string().optional(),
 });
+const chatMessageBody = z.object({
+  text: z.string().max(20_000).default(''),
+  fileIds: z.array(z.string()).max(10).default([]),
+});
+const approvalBody = z.object({ approve: z.boolean() });
+const uploadBody = z.object({
+  filename: z.string().min(1).max(255),
+  mimeType: z.string().max(255).default('application/octet-stream'),
+  contentBase64: z.string().min(1),
+});
+
 const logQuery = z.object({
   actor: z.string().optional(),
   action: z.string().optional(),
@@ -141,7 +159,7 @@ export async function buildServer(
   });
   await app.register(cors, {
     origin: (origin, cb) => cb(null, !!origin && options.allowedOrigins.includes(origin)),
-    methods: ['GET', 'POST'],
+    methods: ['GET', 'POST', 'PATCH', 'DELETE'],
   });
 
   app.setErrorHandler((err: unknown, _req, reply) => {
@@ -151,6 +169,11 @@ export async function buildServer(
       return reply
         .code(status)
         .send({ error: { code: err.code, message: err.message, details: err.details } });
+    }
+    if (err instanceof z.ZodError) {
+      return reply
+        .code(400)
+        .send({ error: { code: 'invalid_input', message: z.prettifyError(err) } });
     }
     if (err instanceof HttpError) {
       return reply.code(err.statusCode).send({ error: { code: err.code, message: err.message } });
@@ -313,6 +336,166 @@ export async function buildServer(
 
   app.post('/api/sync/now', async () => {
     scheduler.syncNow();
+    return { ok: true };
+  });
+
+  // ---------- assistant ----------
+  function requireChat() {
+    if (!deps.chat) {
+      throw new HttpError(
+        503,
+        'assistant_unavailable',
+        'The assistant needs GEMINI_API_KEY in the configuration',
+      );
+    }
+    return deps.chat;
+  }
+
+  /**
+   * Run an agent turn and stream its events as SSE (`data: <json>` per event). Errors before the
+   * first event are ordinary JSON errors; later ones become an `error` event. Closing the
+   * connection aborts the model request.
+   */
+  async function streamAgent(
+    req: FastifyRequest,
+    reply: FastifyReply,
+    run: (emit: (e: AgentEvent) => void, signal: AbortSignal) => Promise<void>,
+  ) {
+    const abort = new AbortController();
+    reply.raw.on('close', () => {
+      if (!reply.raw.writableEnded)
+        deps.logger.info({ url: req.url }, 'client disconnected during an assistant turn');
+      abort.abort();
+    });
+    let started = false;
+    const write = (event: AgentEvent) => {
+      if (reply.raw.writableEnded) return;
+      if (!started) {
+        started = true;
+        reply.hijack();
+        reply.raw.writeHead(200, {
+          ...(reply.getHeaders() as Record<string, string>),
+          'content-type': 'text/event-stream',
+          'cache-control': 'no-cache',
+          connection: 'keep-alive',
+        });
+      }
+      reply.raw.write(`data: ${JSON.stringify(event)}\n\n`);
+      if (event.type === 'done' || event.type === 'error') reply.raw.end();
+    };
+    try {
+      await run(write, abort.signal);
+    } catch (err) {
+      if (!started) throw err;
+      deps.logger.error({ err }, 'assistant turn failed');
+      write({ type: 'error', message: err instanceof Error ? err.message : String(err) });
+    }
+    if (started && !reply.raw.writableEnded) reply.raw.end();
+  }
+
+  app.get('/api/chat/sessions', async () => {
+    const account = await requireAccount();
+    return repos.chats.listSessions(account.id);
+  });
+
+  app.post('/api/chat/sessions', async () => {
+    const account = await requireAccount();
+    requireChat();
+    return repos.chats.createSession(account.id);
+  });
+
+  async function ownSession(id: string) {
+    const account = await requireAccount();
+    const session = await repos.chats.getSession(id);
+    if (!session || session.accountId !== account.id)
+      throw new HttpError(404, 'not_found', 'Chat not found');
+    return { account, session };
+  }
+
+  app.get<{ Params: { id: string } }>('/api/chat/sessions/:id', async (req) => {
+    const { session } = await ownSession(req.params.id);
+    const [messages, awaiting] = await Promise.all([
+      repos.chats.listMessages(session.id),
+      repos.chats.awaitingToolRuns(session.id),
+    ]);
+    return { session, messages, awaiting };
+  });
+
+  app.patch<{ Params: { id: string } }>('/api/chat/sessions/:id', async (req) => {
+    const { session } = await ownSession(req.params.id);
+    const { title } = z.object({ title: z.string().trim().min(1).max(200) }).parse(req.body);
+    await repos.chats.updateSession(session.id, { title });
+    return { ok: true };
+  });
+
+  app.delete<{ Params: { id: string } }>('/api/chat/sessions/:id', async (req) => {
+    const { session } = await ownSession(req.params.id);
+    await repos.chats.deleteSession(session.id);
+    return { ok: true };
+  });
+
+  app.post<{ Params: { id: string } }>('/api/chat/sessions/:id/messages', async (req, reply) => {
+    const chat = requireChat();
+    const { account, session } = await ownSession(req.params.id);
+    const body = chatMessageBody.parse(req.body ?? {});
+    await streamAgent(req, reply, (emit, signal) =>
+      chat.agent.send(
+        account.id,
+        session.id,
+        { text: body.text, fileIds: body.fileIds },
+        emit,
+        signal,
+      ),
+    );
+  });
+
+  app.post<{ Params: { id: string; runId: string } }>(
+    '/api/chat/sessions/:id/actions/:runId',
+    async (req, reply) => {
+      const chat = requireChat();
+      const { account, session } = await ownSession(req.params.id);
+      const { approve } = approvalBody.parse(req.body ?? {});
+      await streamAgent(req, reply, (emit, signal) =>
+        chat.agent.resolve(account.id, session.id, req.params.runId, approve, emit, signal),
+      );
+    },
+  );
+
+  app.post('/api/chat/files', async (req) => {
+    const chat = requireChat();
+    const account = await requireAccount();
+    const upload = uploadBody.parse(req.body);
+    try {
+      const file = await chat.files.save(account.id, {
+        filename: upload.filename,
+        mimeType: upload.mimeType,
+        data: Buffer.from(upload.contentBase64, 'base64'),
+      });
+      return { id: file.id, filename: file.filename, mimeType: file.mimeType, size: file.size };
+    } catch (err) {
+      if (err instanceof UnsupportedFileError)
+        throw new HttpError(400, 'unsupported_file', err.message);
+      throw err;
+    }
+  });
+
+  app.get('/api/memory', async () => {
+    const account = await requireAccount();
+    return requireChat().memory.list(account.id);
+  });
+
+  app.patch<{ Params: { id: string } }>('/api/memory/:id', async (req) => {
+    const account = await requireAccount();
+    const { content } = z.object({ content: z.string().trim().min(1).max(500) }).parse(req.body);
+    const item = await requireChat().memory.update(account.id, req.params.id, content);
+    if (!item) throw new HttpError(404, 'not_found', 'Memory not found');
+    return item;
+  });
+
+  app.delete<{ Params: { id: string } }>('/api/memory/:id', async (req) => {
+    const account = await requireAccount();
+    if (!(await requireChat().memory.remove(account.id, req.params.id)))
+      throw new HttpError(404, 'not_found', 'Memory not found');
     return { ok: true };
   });
 

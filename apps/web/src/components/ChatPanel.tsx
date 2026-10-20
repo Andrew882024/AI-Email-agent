@@ -1,43 +1,696 @@
-import { Bot, Send, X } from 'lucide-react';
+import * as Menu from '@radix-ui/react-dropdown-menu';
+import { useQueryClient } from '@tanstack/react-query';
+import {
+  Bot,
+  Brain,
+  Check,
+  ChevronDown,
+  FileText,
+  MailPlus,
+  Paperclip,
+  Plus,
+  Send,
+  ShieldAlert,
+  Trash2,
+  Wrench,
+  X,
+} from 'lucide-react';
+import { type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from 'react';
+import Markdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import {
+  type AgentEvent,
+  type ChatMessage,
+  type EmailDraft,
+  type StoredPart,
+  streamTurn,
+  type ToolRun,
+  uploadChatFile,
+  useChatSession,
+  useChatSessions,
+} from '../api/chat';
+import { api, ApiError } from '../api/client';
+import { fileSize } from '../lib/format';
 import { useUi } from '../store';
-import { IconButton } from './ui';
+import { MemoryDialog } from './MemoryDialog';
+import { IconButton, Spinner } from './ui';
 
-/** Docked assistant panel. The agent is connected in a later phase; this is the shell. */
+const SUGGESTIONS = [
+  'Summarize my unread emails from today',
+  'Find my most recent invoice',
+  'What do I need to reply to this week?',
+];
+
+/** Tool names as the user reads them. */
+const toolLabel = (name: string) => name.replace(/_/g, ' ');
+
+/** Markdown with links to emails (#thread/<id>) opening the conversation in the app. */
+function Answer({ text }: { text: string }) {
+  const openThread = useUi((s) => s.openThread);
+  return (
+    <div className="chat-md text-sm leading-relaxed">
+      <Markdown
+        remarkPlugins={[remarkGfm]}
+        components={{
+          a: ({ href, children }) =>
+            href?.startsWith('#thread/') ? (
+              <button
+                type="button"
+                onClick={() => openThread(decodeURIComponent(href.slice(8)))}
+                className="text-blue-700 hover:underline"
+              >
+                {children}
+              </button>
+            ) : (
+              <a
+                href={href}
+                target="_blank"
+                rel="noreferrer"
+                className="text-blue-700 hover:underline"
+              >
+                {children}
+              </a>
+            ),
+        }}
+      >
+        {text}
+      </Markdown>
+    </div>
+  );
+}
+
+function ToolChip(props: {
+  name: string;
+  args: Record<string, unknown>;
+  state: 'running' | 'ok' | 'error' | 'waiting';
+  detail?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const color =
+    props.state === 'error'
+      ? 'text-red-700'
+      : props.state === 'waiting'
+        ? 'text-amber-700'
+        : 'text-gray-600';
+  return (
+    <div className={`text-xs ${color}`}>
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="flex items-center gap-1.5 rounded-full bg-gray-100 px-2.5 py-1 hover:bg-gray-200"
+      >
+        {props.state === 'running' ? (
+          <Spinner className="h-3 w-3" />
+        ) : (
+          <Wrench className="h-3 w-3" />
+        )}
+        {toolLabel(props.name)}
+        {props.state === 'error' && ' — failed'}
+        {props.state === 'waiting' && ' — needs approval'}
+        <ChevronDown className={`h-3 w-3 transition ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap rounded-md bg-gray-50 p-2 text-[11px] text-gray-700">
+          {JSON.stringify(props.args, null, 1)}
+          {props.detail ? `\n→ ${props.detail}` : ''}
+        </pre>
+      )}
+    </div>
+  );
+}
+
+function ApprovalCard(props: {
+  description: string;
+  args: Record<string, unknown>;
+  onDecide: (approve: boolean) => void;
+  busy: boolean;
+}) {
+  return (
+    <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm">
+      <div className="flex items-center gap-2 font-medium text-amber-900">
+        <ShieldAlert className="h-4 w-4" /> Approve: {props.description}?
+      </div>
+      <p className="mt-1 text-xs text-amber-900/80">
+        Changes this many emails at once only run with your approval.
+      </p>
+      <div className="mt-2 flex gap-2">
+        <button
+          type="button"
+          disabled={props.busy}
+          onClick={() => props.onDecide(true)}
+          className="flex items-center gap-1 rounded-full bg-amber-600 px-3 py-1 text-xs font-medium text-white hover:bg-amber-700 disabled:opacity-50"
+        >
+          <Check className="h-3.5 w-3.5" /> Approve
+        </button>
+        <button
+          type="button"
+          disabled={props.busy}
+          onClick={() => props.onDecide(false)}
+          className="rounded-full border border-amber-400 px-3 py-1 text-xs hover:bg-amber-100 disabled:opacity-50"
+        >
+          Decline
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function DraftChip({ draft }: { draft: EmailDraft }) {
+  const openDraft = useOpenDraft();
+  return (
+    <button
+      type="button"
+      onClick={() => openDraft(draft)}
+      className="flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-left text-xs text-blue-900 hover:bg-blue-100"
+    >
+      <MailPlus className="h-4 w-4 shrink-0" />
+      <span className="min-w-0">
+        <span className="block font-medium">Draft: {draft.subject || '(no subject)'}</span>
+        <span className="block truncate text-blue-900/70">
+          Opened in a compose window — click to open again
+        </span>
+      </span>
+    </button>
+  );
+}
+
+function useOpenDraft() {
+  const openCompose = useUi((s) => s.openCompose);
+  return (draft: EmailDraft) =>
+    openCompose({
+      mode: draft.mode,
+      sourceMessageId: draft.sourceMessageId,
+      replyPreview: draft.replyPreview,
+      to: draft.to.join(', '),
+      cc: draft.cc.join(', '),
+      showCc: draft.cc.length > 0,
+      subject: draft.subject,
+      body: draft.body,
+    });
+}
+
+const Bubble = ({ children }: { children: ReactNode }) => (
+  <div className="ml-auto max-w-[85%] rounded-2xl rounded-tr-sm bg-[#d3e3fd] px-3.5 py-2 text-sm whitespace-pre-wrap">
+    {children}
+  </div>
+);
+
+/** A stored conversation, paired up: each tool call shows the outcome from the next message's results. */
+function History({
+  messages,
+  awaiting,
+  onDecide,
+  busy,
+}: {
+  messages: ChatMessage[];
+  awaiting: ToolRun[];
+  onDecide: (runId: string, approve: boolean) => void;
+  busy: boolean;
+}) {
+  const results = new Map<string, Extract<StoredPart, { type: 'tool_result' }>>();
+  messages.forEach((m, i) => {
+    if (m.role !== 'model') return;
+    const next = messages[i + 1];
+    m.parts
+      .filter((p) => p.type === 'tool_call')
+      .forEach((_, position) => {
+        const result = next?.parts.filter((p) => p.type === 'tool_result')[position];
+        if (result?.type === 'tool_result') results.set(`${m.id}:${position}`, result);
+      });
+  });
+  return (
+    <>
+      {messages.map((m) => {
+        if (m.role === 'user') {
+          const texts = m.parts.filter((p) => p.type === 'text');
+          const files = m.parts.filter((p) => p.type === 'file_ref');
+          if (texts.length === 0 && files.length === 0) return null; // tool results only
+          return (
+            <div key={m.id} className="flex flex-col items-end gap-1">
+              {files.map((f) => (
+                <span
+                  key={f.fileId}
+                  className="flex items-center gap-1 rounded-lg bg-gray-100 px-2 py-1 text-xs text-gray-700"
+                >
+                  <FileText className="h-3.5 w-3.5" /> {f.name}
+                </span>
+              ))}
+              {texts.length > 0 && <Bubble>{texts.map((t) => t.text).join('\n')}</Bubble>}
+            </div>
+          );
+        }
+        let call = -1;
+        return (
+          <div key={m.id} className="flex flex-col gap-2">
+            {m.parts.map((p, i) => {
+              if (p.type === 'text') return p.text.trim() ? <Answer key={i} text={p.text} /> : null;
+              if (p.type !== 'tool_call') return null;
+              call++;
+              const result = results.get(`${m.id}:${call}`);
+              const waiting = awaiting.find(
+                (r) => r.tool === p.name && JSON.stringify(r.input) === JSON.stringify(p.args),
+              );
+              return (
+                <div key={i} className="flex flex-col gap-2">
+                  <ToolChip
+                    name={p.name}
+                    args={p.args}
+                    state={waiting ? 'waiting' : result?.isError ? 'error' : 'ok'}
+                    detail={result ? JSON.stringify(result.result).slice(0, 300) : undefined}
+                  />
+                  {p.name === 'draft_email' && !result?.isError && (
+                    <span className="text-xs text-gray-500">Draft opened in a compose window.</span>
+                  )}
+                  {waiting && (
+                    <ApprovalCard
+                      description={`${toolLabel(waiting.tool)} on ${(waiting.input.messageIds as unknown[] | undefined)?.length ?? 0} emails`}
+                      args={waiting.input}
+                      busy={busy}
+                      onDecide={(approve) => onDecide(waiting.id, approve)}
+                    />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
+interface LiveTurn {
+  user?: { text: string; files: string[] };
+  text: string;
+  tools: {
+    runId: string;
+    name: string;
+    args: Record<string, unknown>;
+    state: 'running' | 'ok' | 'error' | 'waiting';
+    detail?: string;
+  }[];
+  approvals: Extract<AgentEvent, { type: 'approval_required' }>[];
+  drafts: EmailDraft[];
+  error?: string;
+}
+
+/** Docked assistant: ask about your mail, have it act on emails, draft replies. */
 export function ChatPanel() {
   const toggleChat = useUi((s) => s.toggleChat);
+  const sessionId = useUi((s) => s.chatSessionId);
+  const setSession = useUi((s) => s.setChatSession);
+  const toast = useUi((s) => s.toast);
+  const qc = useQueryClient();
+  const sessions = useChatSessions();
+  const detail = useChatSession(sessionId);
+  const openDraft = useOpenDraft();
+  const [input, setInput] = useState('');
+  const [files, setFiles] = useState<{ id: string; filename: string; size: number }[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [live, setLive] = useState<LiveTurn>();
+  const [busy, setBusy] = useState(false);
+  const [memoryOpen, setMemoryOpen] = useState(false);
+  const scroller = useRef<HTMLDivElement>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const abort = useRef<AbortController | null>(null);
+
+  // Default to the most recent conversation.
+  useEffect(() => {
+    if (!sessionId && sessions.data?.[0]) setSession(sessions.data[0].id);
+  }, [sessionId, sessions.data, setSession]);
+
+  useEffect(() => {
+    scroller.current?.scrollTo({ top: scroller.current.scrollHeight });
+  }, [detail.data, live]);
+
+  useEffect(() => () => abort.current?.abort(), []);
+
+  const unavailable = sessions.error instanceof ApiError && sessions.error.status === 503;
+  const awaiting = detail.data?.awaiting ?? [];
+
+  const run = async (url: string, body: unknown, user?: LiveTurn['user']) => {
+    setBusy(true);
+    setLive({ user, text: '', tools: [], approvals: [], drafts: [] });
+    abort.current = new AbortController();
+    try {
+      await streamTurn(
+        url,
+        body,
+        (event) => {
+          if (event.type === 'draft') openDraft(event.draft);
+          setLive((prev) => {
+            if (!prev) return prev;
+            switch (event.type) {
+              case 'text':
+                return { ...prev, text: prev.text + event.text };
+              case 'tool_call':
+                return prev.tools.some((t) => t.runId === event.runId)
+                  ? prev
+                  : {
+                      ...prev,
+                      tools: [
+                        ...prev.tools,
+                        {
+                          runId: event.runId,
+                          name: event.name,
+                          args: event.args,
+                          state: 'running',
+                        },
+                      ],
+                    };
+              case 'tool_result': {
+                const known = prev.tools.some((t) => t.runId === event.runId);
+                const tool = {
+                  runId: event.runId,
+                  name: event.name,
+                  args: {},
+                  state: event.ok ? ('ok' as const) : ('error' as const),
+                  detail: event.summary,
+                };
+                return {
+                  ...prev,
+                  tools: known
+                    ? prev.tools.map((t) =>
+                        t.runId === event.runId
+                          ? { ...t, state: tool.state, detail: tool.detail }
+                          : t,
+                      )
+                    : [...prev.tools, tool],
+                };
+              }
+              case 'approval_required':
+                return {
+                  ...prev,
+                  approvals: [...prev.approvals, event],
+                  tools: prev.tools.map((t) =>
+                    t.runId === event.runId ? { ...t, state: 'waiting' } : t,
+                  ),
+                };
+              case 'draft':
+                return { ...prev, drafts: [...prev.drafts, event.draft] };
+              case 'error':
+                return { ...prev, error: event.message };
+              default:
+                return prev;
+            }
+          });
+        },
+        abort.current.signal,
+      );
+    } catch (err) {
+      if (!(err instanceof DOMException && err.name === 'AbortError'))
+        toast(err instanceof Error ? err.message : String(err), 'error');
+    } finally {
+      setBusy(false);
+      await qc.invalidateQueries({ queryKey: ['chat'] });
+      void qc.invalidateQueries({ queryKey: ['threads'] });
+      void qc.invalidateQueries({ queryKey: ['labels'] });
+      void qc.invalidateQueries({ queryKey: ['todos'] });
+      setLive((prev) =>
+        prev?.error ? { ...prev, user: undefined, text: '', tools: [] } : undefined,
+      );
+    }
+  };
+
+  const send = async (text = input) => {
+    if (busy || (!text.trim() && files.length === 0)) return;
+    let id = sessionId;
+    if (!id) {
+      id = (await api<{ id: string }>('/api/chat/sessions', { method: 'POST', body: {} })).id;
+      setSession(id);
+    }
+    const sent = files;
+    setInput('');
+    setFiles([]);
+    await run(
+      `/api/chat/sessions/${id}/messages`,
+      { text, fileIds: sent.map((f) => f.id) },
+      { text, files: sent.map((f) => f.filename) },
+    );
+  };
+
+  const decide = (runId: string, approve: boolean) => {
+    if (sessionId) void run(`/api/chat/sessions/${sessionId}/actions/${runId}`, { approve });
+  };
+
+  const attach = async (list: FileList | null) => {
+    if (!list) return;
+    setUploading(true);
+    try {
+      for (const file of [...list]) {
+        const uploaded = await uploadChatFile(file);
+        setFiles((prev) => [...prev, uploaded]);
+      }
+    } catch (err) {
+      toast(err instanceof Error ? err.message : String(err), 'error');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const newChat = () => {
+    setSession(undefined);
+    setLive(undefined);
+    void api<{ id: string }>('/api/chat/sessions', { method: 'POST', body: {} }).then(
+      (s) => {
+        setSession(s.id);
+        void qc.invalidateQueries({ queryKey: ['chat', 'sessions'] });
+      },
+      (err: unknown) => toast(err instanceof Error ? err.message : String(err), 'error'),
+    );
+  };
+
+  const remove = async (id: string) => {
+    await api(`/api/chat/sessions/${id}`, { method: 'DELETE' }).catch(() => undefined);
+    if (id === sessionId) setSession(undefined);
+    void qc.invalidateQueries({ queryKey: ['chat', 'sessions'] });
+  };
+
+  const onKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+      e.preventDefault();
+      void send();
+    }
+  };
+
+  const current = sessions.data?.find((s) => s.id === sessionId);
+  const messages = detail.data?.messages ?? [];
+  const empty = messages.length === 0 && !live?.user;
+  const blocked = busy || awaiting.length > 0 || (live?.approvals.length ?? 0) > 0;
+
   return (
     <aside
       aria-label="Assistant"
-      className="mb-2 mr-2 flex w-[380px] shrink-0 flex-col overflow-hidden rounded-2xl bg-white"
+      className="mb-2 mr-2 flex w-[400px] shrink-0 flex-col overflow-hidden rounded-2xl bg-white"
     >
-      <header className="flex h-12 shrink-0 items-center gap-2 border-b border-gray-100 pl-4 pr-1">
-        <Bot className="h-5 w-5 text-blue-600" />
-        <span className="flex-1 font-medium">Assistant</span>
+      <header className="flex h-12 shrink-0 items-center gap-1 border-b border-gray-100 pl-3 pr-1">
+        <Bot className="h-5 w-5 shrink-0 text-blue-600" />
+        <Menu.Root>
+          <Menu.Trigger asChild>
+            <button
+              type="button"
+              className="flex min-w-0 flex-1 items-center gap-1 rounded-md px-2 py-1 text-left text-sm font-medium hover:bg-gray-100"
+            >
+              <span className="truncate">{current?.title ?? 'Assistant'}</span>
+              <ChevronDown className="h-4 w-4 shrink-0" />
+            </button>
+          </Menu.Trigger>
+          <Menu.Portal>
+            <Menu.Content
+              align="start"
+              sideOffset={4}
+              className="z-50 max-h-96 w-80 overflow-y-auto rounded-xl border bg-white p-1 shadow-lg"
+            >
+              <Menu.Item
+                onSelect={newChat}
+                className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-sm outline-none hover:bg-gray-100"
+              >
+                <Plus className="h-4 w-4" /> New chat
+              </Menu.Item>
+              {(sessions.data ?? []).length > 0 && (
+                <Menu.Separator className="my-1 h-px bg-gray-200" />
+              )}
+              {(sessions.data ?? []).map((s) => (
+                <Menu.Item
+                  key={s.id}
+                  onSelect={() => setSession(s.id)}
+                  className={`group flex cursor-pointer items-center gap-2 rounded-md px-3 py-1.5 text-sm outline-none hover:bg-gray-100 ${s.id === sessionId ? 'bg-blue-50' : ''}`}
+                >
+                  <span className="flex-1 truncate">{s.title}</span>
+                  <button
+                    type="button"
+                    aria-label="Delete chat"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      void remove(s.id);
+                    }}
+                    className="invisible text-gray-500 hover:text-red-700 group-hover:visible"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </Menu.Item>
+              ))}
+            </Menu.Content>
+          </Menu.Portal>
+        </Menu.Root>
+        <IconButton
+          label="What the assistant remembers"
+          onClick={() => setMemoryOpen(true)}
+          disabled={unavailable}
+        >
+          <Brain className="h-[18px] w-[18px]" />
+        </IconButton>
+        <IconButton label="New chat" onClick={newChat} disabled={unavailable}>
+          <Plus className="h-[18px] w-[18px]" />
+        </IconButton>
         <IconButton label="Close assistant" onClick={toggleChat}>
           <X className="h-[18px] w-[18px]" />
         </IconButton>
       </header>
-      <div className="flex-1 overflow-y-auto p-4">
-        <div className="rounded-2xl rounded-tl-sm bg-[#f2f6fc] px-4 py-3 text-sm text-gray-700">
-          Hi! Soon I'll be able to answer questions about your mail, help draft replies, and run
-          workflows that sort, label and archive new email for you. The assistant isn't connected
-          yet.
-        </div>
-      </div>
-      <footer className="border-t border-gray-100 p-3">
-        <div className="flex items-end gap-2 rounded-2xl border border-gray-300 px-3 py-2 opacity-60">
-          <textarea
-            disabled
-            rows={2}
-            placeholder="Ask about your email…"
-            aria-label="Message the assistant"
-            className="flex-1 resize-none bg-transparent text-sm outline-none"
+
+      <div
+        ref={scroller}
+        aria-busy={busy}
+        aria-live="polite"
+        className="flex flex-1 flex-col gap-3 overflow-y-auto p-4"
+      >
+        {unavailable ? (
+          <div className="rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            The assistant needs a Gemini API key. Add GEMINI_API_KEY to the configuration and
+            restart.
+          </div>
+        ) : empty ? (
+          <div className="flex flex-col gap-2">
+            <div className="rounded-2xl rounded-tl-sm bg-[#f2f6fc] px-4 py-3 text-sm text-gray-700">
+              Ask me about your mail, or have me label, archive, add todos and draft replies. I can
+              read attached images, PDFs, Word, Excel and text files.
+            </div>
+            {SUGGESTIONS.map((s) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => void send(s)}
+                className="self-start rounded-full border border-gray-300 px-3 py-1 text-xs text-gray-700 hover:bg-gray-50"
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <History
+            messages={messages}
+            awaiting={live ? [] : awaiting}
+            onDecide={decide}
+            busy={busy}
           />
-          <IconButton label="Send" disabled>
+        )}
+        {live && (
+          <div className="flex flex-col gap-2">
+            {live.user && (
+              <div className="flex flex-col items-end gap-1">
+                {live.user.files.map((f) => (
+                  <span
+                    key={f}
+                    className="flex items-center gap-1 rounded-lg bg-gray-100 px-2 py-1 text-xs text-gray-700"
+                  >
+                    <FileText className="h-3.5 w-3.5" /> {f}
+                  </span>
+                ))}
+                {live.user.text && <Bubble>{live.user.text}</Bubble>}
+              </div>
+            )}
+            {live.tools.map((t) => (
+              <ToolChip
+                key={t.runId}
+                name={t.name}
+                args={t.args}
+                state={t.state}
+                detail={t.detail}
+              />
+            ))}
+            {live.drafts.map((d, i) => (
+              <DraftChip key={i} draft={d} />
+            ))}
+            {live.text && <Answer text={live.text} />}
+            {live.approvals.map((a) => (
+              <ApprovalCard
+                key={a.runId}
+                description={a.description}
+                args={a.args}
+                busy={busy}
+                onDecide={(approve) => decide(a.runId, approve)}
+              />
+            ))}
+            {busy && !live.text && <Spinner className="h-4 w-4 text-blue-600" />}
+            {live.error && <p className="text-sm text-red-700">{live.error}</p>}
+          </div>
+        )}
+      </div>
+
+      <footer className="border-t border-gray-100 p-3">
+        {files.length > 0 && (
+          <div className="mb-2 flex flex-wrap gap-1.5">
+            {files.map((f) => (
+              <span
+                key={f.id}
+                className="flex items-center gap-1 rounded-md bg-gray-100 px-2 py-1 text-xs"
+              >
+                <FileText className="h-3.5 w-3.5" /> {f.filename}{' '}
+                <span className="text-gray-500">({fileSize(f.size)})</span>
+                <button
+                  type="button"
+                  aria-label={`Remove ${f.filename}`}
+                  onClick={() => setFiles(files.filter((x) => x.id !== f.id))}
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+        <div className="flex items-end gap-1 rounded-2xl border border-gray-300 px-2 py-1.5 focus-within:border-blue-600">
+          <IconButton
+            label="Attach files"
+            onClick={() => fileInput.current?.click()}
+            disabled={unavailable || uploading}
+          >
+            {uploading ? <Spinner className="h-4 w-4" /> : <Paperclip className="h-4 w-4" />}
+          </IconButton>
+          <input
+            ref={fileInput}
+            type="file"
+            multiple
+            hidden
+            accept="image/*,.pdf,.docx,.xlsx,.txt,.md,.csv,.json"
+            onChange={(e) => {
+              void attach(e.target.files);
+              e.target.value = '';
+            }}
+          />
+          <textarea
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={onKey}
+            rows={Math.min(6, Math.max(1, input.split('\n').length))}
+            disabled={unavailable}
+            placeholder={
+              awaiting.length > 0
+                ? 'Approve or decline the action above first'
+                : 'Ask about your email…'
+            }
+            aria-label="Message the assistant"
+            className="max-h-40 flex-1 resize-none bg-transparent py-2 text-sm outline-none"
+          />
+          <IconButton
+            label="Send"
+            onClick={() => void send()}
+            disabled={unavailable || blocked || (!input.trim() && files.length === 0)}
+          >
             <Send className="h-4 w-4" />
           </IconButton>
         </div>
       </footer>
+      <MemoryDialog open={memoryOpen} onOpenChange={setMemoryOpen} />
     </aside>
   );
 }

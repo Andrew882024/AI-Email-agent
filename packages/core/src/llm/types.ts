@@ -15,7 +15,7 @@ export type Part =
     }
   | { type: 'tool_result'; id?: string; name: string; result: unknown; isError?: boolean };
 
-export interface ChatMessage {
+export interface LLMMessage {
   role: 'user' | 'model';
   parts: Part[];
 }
@@ -29,7 +29,7 @@ export interface ToolDeclaration {
 
 export interface GenerateRequest {
   system?: string;
-  messages: ChatMessage[];
+  messages: LLMMessage[];
   tools?: ToolDeclaration[];
   /** Ask for JSON matching this JSON Schema (structured output). Not combined with tools. */
   responseSchema?: unknown;

@@ -1,6 +1,6 @@
 // Kysely table types. Mirrors migrations/; only db/ code imports this.
 import type { ColumnType, Generated } from 'kysely';
-import type { EmailAddress } from '../domain/types.js';
+import type { EmailAddress, StoredPart } from '../domain/types.js';
 
 /** jsonb: parsed on select, written as a JSON string (node-pg would turn JS arrays into PG arrays). */
 type Json<T> = ColumnType<T, string, string>;
@@ -144,6 +144,60 @@ export interface EmailEmbeddingsTable {
   embedded_at: Generated<Date>;
 }
 
+export interface ChatSessionsTable {
+  id: Generated<string>;
+  account_id: string;
+  title: Generated<string>;
+  summary: string | null;
+  summarized_through: ColumnType<string | null, string | null, string | null>;
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
+export interface ChatMessagesTable {
+  id: Int8Id;
+  session_id: string;
+  role: 'user' | 'model';
+  parts: Json<StoredPart[]>;
+  created_at: Generated<Date>;
+}
+
+export interface ToolRunsTable {
+  id: Generated<string>;
+  session_id: string;
+  message_id: string;
+  position: number;
+  call_id: string | null;
+  tool: string;
+  input: Json<Record<string, unknown>>;
+  status: 'awaiting_approval' | 'done' | 'error' | 'rejected';
+  result: Json<unknown> | null;
+  created_at: Generated<Date>;
+  resolved_at: Date | null;
+}
+
+export interface MemoryItemsTable {
+  id: Generated<string>;
+  account_id: string;
+  content: string;
+  category: string;
+  source_session_id: string | null;
+  embedding: ColumnType<string | null, string | null, string | null>;
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
+export interface ChatFilesTable {
+  id: Generated<string>;
+  account_id: string;
+  filename: string;
+  mime_type: string;
+  size: number;
+  storage_path: string;
+  extracted_text: string | null;
+  created_at: Generated<Date>;
+}
+
 export interface Database {
   accounts: AccountsTable;
   oauth_tokens: OAuthTokensTable;
@@ -157,4 +211,9 @@ export interface Database {
   action_logs: ActionLogsTable;
   sync_state: SyncStateTable;
   email_embeddings: EmailEmbeddingsTable;
+  chat_sessions: ChatSessionsTable;
+  chat_messages: ChatMessagesTable;
+  tool_runs: ToolRunsTable;
+  memory_items: MemoryItemsTable;
+  chat_files: ChatFilesTable;
 }
