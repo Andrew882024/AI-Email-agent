@@ -13,10 +13,13 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "doctor": "pnpm run build && node dist/cli/doctor.js",
-    "migrate": "pnpm run build && node dist/cli/migrate.js"
+    "migrate": "pnpm run build && node dist/cli/migrate.js",
+    "auth": "pnpm run build && node dist/cli/auth.js"
   },
   "dependencies": {
+    "google-auth-library": "^11.3.1",
     "kysely": "0.29.7",
+    "open": "^11.0.4",
     "pg": "^8.23.1",
     "pino": "10.4.0",
     "zod": "^4.6.7"

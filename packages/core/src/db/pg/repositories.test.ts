@@ -71,6 +71,25 @@ describe.skipIf(!testDatabaseUrl)('Postgres repositories', () => {
     });
   });
 
+  describe('oauth tokens', () => {
+    it('saves, replaces and deletes; cascades with the account', async () => {
+      expect(await repos.oauthTokens.get(accountId)).toBeUndefined();
+      await repos.oauthTokens.save(accountId, { encryptedRefreshToken: 'c1', scopes: ['a'] });
+      await repos.oauthTokens.save(accountId, { encryptedRefreshToken: 'c2', scopes: ['a', 'b'] });
+      expect(await repos.oauthTokens.get(accountId)).toMatchObject({
+        accountId,
+        encryptedRefreshToken: 'c2',
+        scopes: ['a', 'b'],
+      });
+      await repos.oauthTokens.delete(accountId);
+      expect(await repos.oauthTokens.get(accountId)).toBeUndefined();
+
+      await repos.oauthTokens.save(accountId, { encryptedRefreshToken: 'c3', scopes: [] });
+      await repos.accounts.delete(accountId);
+      expect(await repos.oauthTokens.get(accountId)).toBeUndefined();
+    });
+  });
+
   describe('labels', () => {
     it('upserts, finds by name case-insensitively and replaces the full set', async () => {
       await repos.labels.upsert(accountId, [

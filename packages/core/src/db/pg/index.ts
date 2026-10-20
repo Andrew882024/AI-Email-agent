@@ -4,12 +4,14 @@ import { PgAccountRepository } from './account-repository.js';
 import { PgActionLogRepository } from './action-log-repository.js';
 import { PgLabelRepository } from './label-repository.js';
 import { PgMessageRepository } from './message-repository.js';
+import { PgOAuthTokenRepository } from './oauth-token-repository.js';
 import { PgOutboxRepository } from './outbox-repository.js';
 import { PgTodoRepository } from './todo-repository.js';
 
 export function createPgRepositories(db: Db): Repositories {
   return {
     accounts: new PgAccountRepository(db),
+    oauthTokens: new PgOAuthTokenRepository(db),
     labels: new PgLabelRepository(db),
     messages: new PgMessageRepository(db),
     todos: new PgTodoRepository(db),

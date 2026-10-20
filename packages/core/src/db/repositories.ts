@@ -24,6 +24,24 @@ export interface AccountRepository {
   delete(id: string): Promise<void>;
 }
 
+export interface StoredOAuthToken {
+  accountId: string;
+  /** Ciphertext produced by a SecretCipher; this layer never sees the plaintext token. */
+  encryptedRefreshToken: string;
+  scopes: string[];
+  updatedAt: Date;
+}
+
+export interface OAuthTokenRepository {
+  get(accountId: string): Promise<StoredOAuthToken | undefined>;
+  /** Insert or replace the account's token. */
+  save(
+    accountId: string,
+    token: { encryptedRefreshToken: string; scopes: string[] },
+  ): Promise<void>;
+  delete(accountId: string): Promise<void>;
+}
+
 export interface LabelRepository {
   list(accountId: string): Promise<Label[]>;
   get(accountId: string, id: string): Promise<Label | undefined>;
@@ -148,6 +166,7 @@ export interface ActionLogRepository {
 
 export interface Repositories {
   accounts: AccountRepository;
+  oauthTokens: OAuthTokenRepository;
   labels: LabelRepository;
   messages: MessageRepository;
   todos: TodoRepository;
