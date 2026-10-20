@@ -11,6 +11,10 @@ import {
   createDb,
   createEmailTools,
   createPgRepositories,
+  EMBEDDING_DIMENSIONS,
+  EmailIndexer,
+  GeminiEmbeddings,
+  HybridSearch,
   createSystemLogger,
   EncryptedTokenStore,
   EventBus,
@@ -42,6 +46,8 @@ export interface Services {
   auth: GoogleOAuthService;
   scheduler: SyncScheduler;
   tools: ToolRegistry;
+  /** Embedding model of the semantic index, when indexing is on. */
+  indexModel?: string;
   /** Stop background sync and close the database pool. */
   close(): Promise<void>;
 }
@@ -85,6 +91,17 @@ export function createServices(config: AppConfig, host: HostCapabilities): Servi
   });
   const outbox = new OutboxWorker({ repos, gateways, events, actions, logger, mailSync });
   const tasksSync = new TasksSync(repos, gateways, events);
+  const embeddings = config.geminiApiKey
+    ? new GeminiEmbeddings({
+        apiKey: config.geminiApiKey,
+        model: config.llm.embedModel,
+        dimensions: EMBEDDING_DIMENSIONS,
+      })
+    : undefined;
+  const indexer =
+    embeddings && config.rag.indexing
+      ? new EmailIndexer({ repos, embeddings, events, logger })
+      : undefined;
   const scheduler = new SyncScheduler({
     repos,
     auth,
@@ -94,10 +111,12 @@ export function createServices(config: AppConfig, host: HostCapabilities): Servi
     events,
     logger,
     mailIntervalMs: config.sync.pollSeconds * 1000,
+    indexer,
   });
   const mailbox = new MailboxService(repos, events);
+  const search = new HybridSearch({ repos, embeddings, logger });
   const tools = new ToolRegistry(actions).register(
-    ...createEmailTools({ repos, mailbox, gateways, events }),
+    ...createEmailTools({ repos, mailbox, gateways, events, search }),
   );
 
   return {
@@ -109,6 +128,7 @@ export function createServices(config: AppConfig, host: HostCapabilities): Servi
     auth,
     scheduler,
     tools,
+    indexModel: indexer?.model,
     async close() {
       await scheduler.stop();
       await db.destroy();

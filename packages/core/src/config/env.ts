@@ -32,6 +32,10 @@ const EnvSchema = z.object({
   GMAIL_QUOTA_UNITS_PER_MINUTE: z.coerce.number().int().min(60).default(15_000),
   APP_SECRET_KEY: optionalString,
   GEMINI_API_KEY: optionalString,
+  GEMINI_MODEL: z.string().min(1).default('gemini-3.8-flash'),
+  GEMINI_EMBED_MODEL: z.string().min(1).default('gemini-embedding-2'),
+  /** Embed mail for semantic search (needs GEMINI_API_KEY). */
+  RAG_INDEXING: z.enum(['on', 'off']).default('on'),
 });
 
 export interface AppConfig {
@@ -46,6 +50,8 @@ export interface AppConfig {
   sync: { windowDays: number; pollSeconds: number; gmailQuotaPerMinute: number };
   appSecretKey?: string;
   geminiApiKey?: string;
+  llm: { model: string; embedModel: string };
+  rag: { indexing: boolean };
 }
 
 export class ConfigError extends Error {
@@ -76,6 +82,8 @@ export function parseConfig(env: Record<string, string | undefined>): AppConfig 
     },
     appSecretKey: e.APP_SECRET_KEY,
     geminiApiKey: e.GEMINI_API_KEY,
+    llm: { model: e.GEMINI_MODEL, embedModel: e.GEMINI_EMBED_MODEL },
+    rag: { indexing: e.RAG_INDEXING === 'on' && !!e.GEMINI_API_KEY },
   };
 }
 

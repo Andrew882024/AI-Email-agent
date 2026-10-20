@@ -17,6 +17,8 @@ describe('parseConfig', () => {
       dataDir: join(homedir(), '.ai-email-agent'),
       google: { clientId: 'id', clientSecret: 'secret' },
       sync: { windowDays: 365, pollSeconds: 30, gmailQuotaPerMinute: 15_000 },
+      llm: { model: 'gemini-3.8-flash', embedModel: 'gemini-embedding-2' },
+      rag: { indexing: false },
     });
     expect(config.geminiApiKey).toBeUndefined();
   });

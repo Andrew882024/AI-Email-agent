@@ -7,6 +7,7 @@ const APP_TABLES = [
   'accounts',
   'action_logs',
   'attachments',
+  'email_embeddings',
   'labels',
   'message_labels',
   'messages',
@@ -37,14 +38,19 @@ describe.skipIf(!testDatabaseUrl)('migrator', () => {
     expect(up.map((r) => [r.migrationName, r.status])).toEqual([
       ['0001_init', 'Success'],
       ['0002_sync', 'Success'],
+      ['0003_rag', 'Success'],
     ]);
     expect(await tables()).toEqual(APP_TABLES);
 
     expect(await migrateToLatest(t.db)).toEqual([]);
 
+    expect((await migrateDown(t.db)).map((r) => r.migrationName)).toEqual(['0003_rag']);
+    expect(await tables()).toEqual(APP_TABLES.filter((name) => name !== 'email_embeddings'));
     const down = await migrateDown(t.db);
     expect(down.map((r) => [r.migrationName, r.direction])).toEqual([['0002_sync', 'Down']]);
-    expect(await tables()).toEqual(APP_TABLES.filter((name) => name !== 'sync_state'));
+    expect(await tables()).toEqual(
+      APP_TABLES.filter((name) => !['sync_state', 'email_embeddings'].includes(name)),
+    );
     await migrateDown(t.db);
     expect(await tables()).toEqual([]);
 

@@ -29,6 +29,8 @@ export interface ServerDeps {
   events: EventBus;
   scheduler: Pick<SyncScheduler, 'syncNow'>;
   logger: Logger;
+  /** Embedding model of the semantic index, if indexing is on. */
+  indexModel?: string;
 }
 
 export interface ServerOptions {
@@ -77,6 +79,7 @@ const SSE_EVENTS: AppEventName[] = [
   'todos.changed',
   'sync.status',
   'outbox.failed',
+  'index.status',
 ];
 
 const listQuery = z.object({
@@ -295,6 +298,16 @@ export async function buildServer(
       lastFullSyncAt: account.lastFullSyncAt,
       fullSync: state.fullSync,
       outboxPending: pending.length,
+    };
+  });
+
+  app.get('/api/index/status', async () => {
+    const account = await requireAccount();
+    if (!deps.indexModel) return { enabled: false };
+    return {
+      enabled: true,
+      model: deps.indexModel,
+      ...(await repos.vectors.stats(account.id, deps.indexModel)),
     };
   });
 

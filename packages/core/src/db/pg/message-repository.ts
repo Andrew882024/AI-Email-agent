@@ -15,7 +15,12 @@ import {
   type ThreadSummary,
 } from '../../domain/types.js';
 import type { Db } from '../connection.js';
-import type { LabelCounts, MessageListQuery, MessageRepository } from '../repositories.js';
+import type {
+  LabelCounts,
+  MessageFilter,
+  MessageListQuery,
+  MessageRepository,
+} from '../repositories.js';
 import type { AttachmentsTable, Database, MessagesTable } from '../schema.js';
 import { chunk, clamp, decodeCursor, encodeCursor, escapeLike } from './util.js';
 
@@ -165,10 +170,10 @@ function hasLabel(eb: ExpressionBuilder<Database & { m: MessagesTable }, 'm'>, i
   );
 }
 
-/** Label include/exclude and keyword conditions on message `m`. */
-function messageFilter(
+/** Label, keyword, sender and date conditions on message `m`. */
+export function messageFilter(
   eb: ExpressionBuilder<Database & { m: MessagesTable }, 'm'>,
-  query: MessageListQuery,
+  query: MessageFilter,
 ): Expression<SqlBool> {
   const conditions: Expression<SqlBool>[] = [];
   for (const labelId of new Set(query.labelIds)) conditions.push(hasLabel(eb, [labelId]));
@@ -180,13 +185,26 @@ function messageFilter(
     conditions.push(
       eb.or([
         sql<boolean>`m.fts @@ websearch_to_tsquery('simple', ${search})`,
-        // ILIKE fallback: the 'simple' parser does not segment CJK text.
+        // Substring fallback (trigram-indexed): the 'simple' parser does not segment CJK text.
         eb('m.subject', 'ilike', pattern),
+        sql<boolean>`left(coalesce(m.body_text, ''), 20000) ilike ${pattern}`,
         sql<boolean>`m.from_addr ->> 'email' ilike ${pattern}`,
         sql<boolean>`m.from_addr ->> 'name' ilike ${pattern}`,
       ]),
     );
   }
+  const from = query.from?.trim();
+  if (from) {
+    const pattern = `%${escapeLike(from)}%`;
+    conditions.push(
+      eb.or([
+        sql<boolean>`m.from_addr ->> 'email' ilike ${pattern}`,
+        sql<boolean>`m.from_addr ->> 'name' ilike ${pattern}`,
+      ]),
+    );
+  }
+  if (query.receivedAfter) conditions.push(eb('m.internal_date', '>=', query.receivedAfter));
+  if (query.receivedBefore) conditions.push(eb('m.internal_date', '<', query.receivedBefore));
   return conditions.length > 0 ? eb.and(conditions) : sql<boolean>`true`;
 }
 
@@ -508,6 +526,24 @@ export class PgMessageRepository implements MessageRepository {
     const ids = (await q.execute()).map((r) => r.id);
     await this.deleteMany(accountId, ids);
     return ids;
+  }
+
+  async keywordSearch(accountId: string, text: string, filter: MessageFilter, limit: number) {
+    const search = text.trim();
+    if (!search) return [];
+    const rows = await this.db
+      .selectFrom('messages as m')
+      .select([
+        'm.id',
+        sql<number>`ts_rank_cd(m.fts, websearch_to_tsquery('simple', ${search}))`.as('rank'),
+      ])
+      .where('m.account_id', '=', accountId)
+      .where((eb) => messageFilter(eb, { ...filter, search }))
+      .orderBy('rank', 'desc')
+      .orderBy('m.internal_date', 'desc')
+      .limit(clamp(limit, 1, 500))
+      .execute();
+    return rows.map((r) => ({ messageId: r.id, score: Number(r.rank) }));
   }
 
   async countByLabel(accountId: string) {

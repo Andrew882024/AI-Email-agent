@@ -8,6 +8,7 @@ import type { Repositories } from '../db/repositories.js';
 import { EventBus } from '../events/event-bus.js';
 import { ActionLogger } from '../logging/action-logger.js';
 import { MailSync } from '../sync/mail-sync.js';
+import { HybridSearch } from '../rag/hybrid-search.js';
 import { MailboxService } from '../sync/mailbox.js';
 import { OutboxWorker } from '../sync/outbox-worker.js';
 import { createEmailTools } from './email-tools.js';
@@ -64,7 +65,13 @@ describe.skipIf(!testDatabaseUrl)('email tools', () => {
     const mailbox = new MailboxService(repos, events);
     worker = new OutboxWorker({ repos, gateways: google, events, actions, logger, mailSync });
     tools = new ToolRegistry(actions).register(
-      ...createEmailTools({ repos, mailbox, gateways: google, events }),
+      ...createEmailTools({
+        repos,
+        mailbox,
+        gateways: google,
+        events,
+        search: new HybridSearch({ repos }),
+      }),
     );
 
     const gmail = google.fakeGmail;
@@ -178,9 +185,15 @@ describe.skipIf(!testDatabaseUrl)('email tools', () => {
 
     it('searches and reads emails, threads, labels and attachments', async () => {
       const found = (await call('search_emails', { query: 'invoice' })) as {
-        items: { id: string }[];
+        items: { id: string; matchedBy: string[] }[];
+        mode: string;
       };
       expect(found.items.map((m) => m.id)).toEqual(['m1']);
+      expect(found).toMatchObject({
+        mode: 'keyword',
+        note: expect.stringContaining('not configured'),
+      });
+      expect(found.items[0]!.matchedBy).toEqual(['keyword']);
       const email = (await call('get_email', { messageId: 'm1' })) as Record<string, unknown>;
       expect(email).toMatchObject({
         subject: 'Invoice March',

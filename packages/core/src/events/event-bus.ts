@@ -17,6 +17,14 @@ export interface AppEvents {
     synced?: number;
     error?: string;
   };
+  /** Semantic index progress: `indexed` of `total` messages have a current embedding. */
+  'index.status': {
+    accountId: string;
+    phase: 'indexing' | 'idle' | 'error';
+    indexed?: number;
+    total?: number;
+    error?: string;
+  };
   /** A local change was queued for Google; wakes the outbox worker. */
   'outbox.enqueued': { accountId: string };
   /** A queued change was given up on; local state has been reconciled with Google. */

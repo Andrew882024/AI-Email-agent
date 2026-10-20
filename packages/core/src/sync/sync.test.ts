@@ -8,6 +8,8 @@ import { createPgRepositories } from '../db/pg/index.js';
 import type { Repositories } from '../db/repositories.js';
 import { type AppEventName, type AppEvents, EventBus } from '../events/event-bus.js';
 import { ActionLogger } from '../logging/action-logger.js';
+import { FakeEmbeddings } from '../../test/helpers/fake-llm.js';
+import { EmailIndexer } from '../rag/indexer.js';
 import { MailSync } from './mail-sync.js';
 import { MailboxService } from './mailbox.js';
 import { OutboxWorker } from './outbox-worker.js';
@@ -80,6 +82,7 @@ describe.skipIf(!testDatabaseUrl)('sync', () => {
       'sync.status',
       'outbox.enqueued',
       'outbox.failed',
+      'index.status',
     ];
     for (const name of names)
       events.on(name, (payload) => void seen.push({ event: name, payload }));
@@ -373,6 +376,38 @@ describe.skipIf(!testDatabaseUrl)('sync', () => {
         await expect
           .poll(() => google.fakeGmail.labelsOf('m1'), { timeout: 2000 })
           .toContain('STARRED');
+      } finally {
+        await scheduler.stop();
+      }
+    });
+
+    it('indexes new mail for semantic search as it arrives', async () => {
+      const embeddings = new FakeEmbeddings();
+      const scheduler = new SyncScheduler({
+        repos,
+        auth: { isConnected: async () => true },
+        mailSync,
+        tasksSync,
+        outbox: worker,
+        events,
+        logger,
+        mailIntervalMs: 50,
+        indexer: new EmailIndexer({ repos, embeddings, events, logger }),
+        indexIntervalMs: 60_000,
+      });
+      await scheduler.start();
+      try {
+        google.fakeGmail.add({ id: 'm1', subject: 'Quarterly report' });
+        await expect
+          .poll(async () => (await repos.vectors.stats(accountId, 'fake-embed')).indexed, {
+            timeout: 3000,
+          })
+          .toBe(1);
+        expect(eventsOf('index.status').at(-1)).toMatchObject({
+          phase: 'idle',
+          indexed: 1,
+          total: 1,
+        });
       } finally {
         await scheduler.stop();
       }

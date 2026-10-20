@@ -64,9 +64,22 @@ export interface MessageListQuery {
   excludeLabelIds?: string[];
   /** Keyword search over subject, sender and body. */
   search?: string;
+  /** Sender address or name contains this (case-insensitive). */
+  from?: string;
+  receivedAfter?: Date;
+  receivedBefore?: Date;
   /** Clamped to 1..200. */
   limit: number;
   cursor?: string;
+}
+
+/** Filters without paging, for ranked searches. */
+export type MessageFilter = Omit<MessageListQuery, 'limit' | 'cursor'>;
+
+/** A ranked search hit: higher score = more relevant. */
+export interface SearchHit {
+  messageId: string;
+  score: number;
 }
 
 export interface LabelCounts {
@@ -105,6 +118,41 @@ export interface MessageRepository {
     options: { updatedBefore: Date; receivedSince?: Date },
   ): Promise<string[]>;
   countByLabel(accountId: string): Promise<Record<string, LabelCounts>>;
+  /** Keyword matches ranked by full-text relevance (substring-only matches rank by recency). */
+  keywordSearch(
+    accountId: string,
+    text: string,
+    filter: MessageFilter,
+    limit: number,
+  ): Promise<SearchHit[]>;
+}
+
+/** Message embeddings for semantic search ("one chunk per email"). */
+export interface VectorStore {
+  readonly dimensions: number;
+  /**
+   * Messages needing (re-)embedding, newest first: no embedding yet, embedded with another
+   * model, or changed since. Includes the stored content hash so unchanged content can be skipped.
+   */
+  stale(
+    accountId: string,
+    model: string,
+    limit: number,
+  ): Promise<{ messageId: string; contentHash?: string }[]>;
+  upsert(
+    accountId: string,
+    items: { messageId: string; model: string; contentHash: string; embedding: number[] }[],
+  ): Promise<void>;
+  /** Mark embeddings current without re-embedding (the message changed but its text didn't). */
+  touch(accountId: string, messageIds: string[]): Promise<void>;
+  /** Nearest messages by cosine similarity (score in [-1, 1]), honoring the filter. */
+  search(
+    accountId: string,
+    embedding: number[],
+    filter: MessageFilter,
+    limit: number,
+  ): Promise<SearchHit[]>;
+  stats(accountId: string, model: string): Promise<{ indexed: number; total: number }>;
 }
 
 export interface NewTodo {
@@ -214,4 +262,5 @@ export interface Repositories {
   outbox: OutboxRepository;
   actionLogs: ActionLogRepository;
   syncState: SyncStateRepository;
+  vectors: VectorStore;
 }

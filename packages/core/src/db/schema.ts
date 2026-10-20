@@ -134,6 +134,16 @@ export interface SyncStateTable {
   updated_at: Generated<Date>;
 }
 
+export interface EmailEmbeddingsTable {
+  account_id: string;
+  message_id: string;
+  model: string;
+  content_hash: string;
+  /** pgvector literal ('[0.1,0.2,...]') on write; not selected back. */
+  embedding: ColumnType<string, string, string>;
+  embedded_at: Generated<Date>;
+}
+
 export interface Database {
   accounts: AccountsTable;
   oauth_tokens: OAuthTokensTable;
@@ -146,4 +156,5 @@ export interface Database {
   outbox_ops: OutboxOpsTable;
   action_logs: ActionLogsTable;
   sync_state: SyncStateTable;
+  email_embeddings: EmailEmbeddingsTable;
 }

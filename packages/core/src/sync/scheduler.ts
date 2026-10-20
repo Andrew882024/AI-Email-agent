@@ -3,6 +3,7 @@ import type { GoogleAuthProvider } from '../auth/google-auth.js';
 import type { Repositories } from '../db/repositories.js';
 import type { EventBus } from '../events/event-bus.js';
 import type { Logger } from '../logging/system-logger.js';
+import type { EmailIndexer } from '../rag/indexer.js';
 import type { MailSync } from './mail-sync.js';
 import type { OutboxWorker } from './outbox-worker.js';
 import type { TasksSync } from './tasks-sync.js';
@@ -62,6 +63,9 @@ export interface SyncSchedulerOptions {
   /** Fallback poll; new ops wake the worker immediately. Default 5s. */
   outboxIntervalMs?: number;
   tasksIntervalMs?: number;
+  /** Keeps the semantic index current; new and changed mail wakes it. */
+  indexer?: EmailIndexer;
+  indexIntervalMs?: number;
 }
 
 /** Background sync for every connected account: Gmail polling, Tasks polling, outbox pushes. */
@@ -69,7 +73,8 @@ export class SyncScheduler {
   private readonly mail: Loop;
   private readonly tasks: Loop;
   private readonly outbox: Loop;
-  private unsubscribe?: () => void;
+  private readonly index?: Loop;
+  private unsubscribers: (() => void)[] = [];
 
   constructor(private readonly options: SyncSchedulerOptions) {
     this.mail = new Loop(
@@ -84,21 +89,52 @@ export class SyncScheduler {
       () => this.forEachAccount('outbox', (id) => this.drainOutbox(id)),
       options.outboxIntervalMs ?? 5000,
     );
+    const indexer = options.indexer;
+    if (indexer) {
+      this.index = new Loop(
+        () =>
+          this.forEachAccount('index', async (id) => {
+            try {
+              await indexer.indexAll(id);
+            } catch (err) {
+              options.events.emit('index.status', {
+                accountId: id,
+                phase: 'error',
+                error: err instanceof Error ? err.message : String(err),
+              });
+              throw err;
+            }
+          }),
+        // Fallback only (new mail wakes it); short so a failed batch (e.g. network) retries soon.
+        options.indexIntervalMs ?? 60_000,
+      );
+    }
   }
 
   async start(): Promise<void> {
     // Ops left in_progress by a crash are safe to retry.
     const requeued = await this.options.repos.outbox.requeueInProgress();
     if (requeued > 0) this.options.logger.info({ requeued }, 'requeued interrupted outbox ops');
-    this.unsubscribe = this.options.events.on('outbox.enqueued', () => this.outbox.kick());
+    const { events } = this.options;
+    this.unsubscribers = [
+      events.on('outbox.enqueued', () => this.outbox.kick()),
+      events.on('message.added', () => this.index?.kick()),
+      events.on('message.updated', () => this.index?.kick()),
+    ];
     this.outbox.start();
     this.mail.start();
     this.tasks.start();
+    this.index?.start();
   }
 
   async stop(): Promise<void> {
-    this.unsubscribe?.();
-    await Promise.all([this.mail.stop(), this.tasks.stop(), this.outbox.stop()]);
+    this.unsubscribers.forEach((off) => off());
+    await Promise.all([
+      this.mail.stop(),
+      this.tasks.stop(),
+      this.outbox.stop(),
+      this.index?.stop(),
+    ]);
   }
 
   /** Poll Gmail now (e.g. user pressed refresh). */

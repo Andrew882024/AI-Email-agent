@@ -5,6 +5,7 @@ import {
   createEmailTools,
   createPgRepositories,
   EventBus,
+  HybridSearch,
   type GoogleAuthProvider,
   MailboxService,
   MailSync,
@@ -85,7 +86,13 @@ describe.skipIf(!testDatabaseUrl)('HTTP API', () => {
     worker = new OutboxWorker({ repos, gateways: google, events, actions, logger, mailSync });
     const mailbox = new MailboxService(repos, events);
     tools = new ToolRegistry(actions).register(
-      ...createEmailTools({ repos, mailbox, gateways: google, events }),
+      ...createEmailTools({
+        repos,
+        mailbox,
+        gateways: google,
+        events,
+        search: new HybridSearch({ repos }),
+      }),
     );
     google.fakeGmail.add(
       { id: 'm1', subject: 'Hello there', date: new Date(Date.now() - 3600_000) },
@@ -299,6 +306,21 @@ describe.skipIf(!testDatabaseUrl)('HTTP API', () => {
       await sql`truncate accounts cascade`.execute(t.db);
       expect((await get('/api/auth/status')).json()).toEqual({ account: null, connected: false });
       expect((await get('/api/messages')).json().error.code).toBe('not_connected');
+    });
+
+    it('reports semantic index status', async () => {
+      expect((await get('/api/index/status')).json()).toEqual({ enabled: false });
+      const withIndex = await buildServer(
+        { repos, auth, tools, events, scheduler, logger, indexModel: 'fake-embed' },
+        { allowedOrigins: [] },
+      );
+      const res = await withIndex.inject({
+        method: 'GET',
+        url: '/api/index/status',
+        headers: { host: '127.0.0.1:4317' },
+      });
+      expect(res.json()).toEqual({ enabled: true, model: 'fake-embed', indexed: 0, total: 2 });
+      await withIndex.close();
     });
 
     it('exposes sync status and a manual sync trigger', async () => {

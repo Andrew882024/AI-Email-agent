@@ -18,6 +18,7 @@
     "sync": "pnpm run build && node dist/cli/sync.js"
   },
   "dependencies": {
+    "@google/genai": "2.30.0",
     "@googleapis/gmail": "^22.0.2",
     "@googleapis/tasks": "^17.0.1",
     "addressparser": "^1.0.1",

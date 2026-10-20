@@ -7,7 +7,11 @@ import { PgMessageRepository } from './message-repository.js';
 import { PgOAuthTokenRepository } from './oauth-token-repository.js';
 import { PgOutboxRepository } from './outbox-repository.js';
 import { PgSyncStateRepository } from './sync-state-repository.js';
+import { PgVectorStore } from './vector-store.js';
 import { PgTodoRepository } from './todo-repository.js';
+
+/** Embedding size; fixed by migration 0003's vector column. */
+export const EMBEDDING_DIMENSIONS = 1536;
 
 export function createPgRepositories(db: Db): Repositories {
   return {
@@ -19,5 +23,6 @@ export function createPgRepositories(db: Db): Repositories {
     outbox: new PgOutboxRepository(db),
     actionLogs: new PgActionLogRepository(db),
     syncState: new PgSyncStateRepository(db),
+    vectors: new PgVectorStore(db, EMBEDDING_DIMENSIONS),
   };
 }

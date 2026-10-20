@@ -3,6 +3,7 @@ import type { Repositories } from '../db/repositories.js';
 import { type Label, type Message, SystemLabel } from '../domain/types.js';
 import type { EventBus } from '../events/event-bus.js';
 import type { GatewayProvider } from '../google/gateways.js';
+import type { HybridSearch } from '../rag/hybrid-search.js';
 import { NotFoundError, type MailboxService } from '../sync/mailbox.js';
 import { parseAddresses, parseGmailLabel, parseGmailMessage } from '../sync/parse-message.js';
 import {
@@ -22,6 +23,7 @@ export interface EmailToolDeps {
   mailbox: MailboxService;
   gateways: GatewayProvider;
   events: EventBus;
+  search: HybridSearch;
 }
 
 /** Gmail rejects messages over 25 MB; leave room for MIME encoding overhead. */
@@ -121,7 +123,7 @@ function withoutContent(input: Record<string, unknown>): Record<string, unknown>
 }
 
 export function createEmailTools(deps: EmailToolDeps) {
-  const { repos, mailbox, gateways, events } = deps;
+  const { repos, mailbox, gateways, events, search } = deps;
 
   async function account(ctx: ToolContext) {
     const found = await repos.accounts.getById(ctx.accountId);
@@ -256,16 +258,36 @@ export function createEmailTools(deps: EmailToolDeps) {
     defineTool({
       name: 'search_emails',
       description:
-        'Keyword search over subject, sender and body (supports "quoted phrases", OR and -exclusion). Newest first.',
+        'Search emails by meaning and keywords (hybrid semantic + full-text search), most relevant first. ' +
+        'Works for questions ("when is my flight?") and exact terms ("invoice 4521"). Returns summaries ' +
+        'with a relevance score; use get_email or get_thread to read the bodies.',
       sideEffect: 'read',
-      input: z.object({ query: z.string().min(1), view: view.default('all'), ...listing }),
+      input: z.object({
+        query: z.string().min(1),
+        view: view.default('all'),
+        label: z.string().optional().describe('Only emails with this label (name or id)'),
+        from: z.string().optional().describe('Sender address or name contains this'),
+        after: z.iso.date().optional().describe('Received on or after this date (YYYY-MM-DD)'),
+        before: z.iso.date().optional().describe('Received before this date (YYYY-MM-DD)'),
+        limit: z.number().int().min(1).max(50).default(10),
+        mode: z
+          .enum(['hybrid', 'keyword', 'semantic'])
+          .default('hybrid')
+          .describe('keyword = exact terms only; semantic = meaning only'),
+      }),
       handler: async (ctx, i) =>
-        repos.messages.list(ctx.accountId, {
-          ...(await listQuery(ctx, i.view, i.label)),
-          search: i.query,
-          limit: i.limit,
-          cursor: i.cursor,
-        }),
+        search.search(
+          ctx.accountId,
+          i.query,
+          {
+            ...(await listQuery(ctx, i.view, i.label)),
+            from: i.from,
+            receivedAfter: i.after ? new Date(`${i.after}T00:00:00Z`) : undefined,
+            receivedBefore: i.before ? new Date(`${i.before}T00:00:00Z`) : undefined,
+          },
+          i.limit,
+          i.mode,
+        ),
     }),
     defineTool({
       name: 'get_email',

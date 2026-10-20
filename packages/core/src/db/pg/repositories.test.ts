@@ -7,7 +7,7 @@ import {
 } from '../../../test/helpers/db.js';
 import type { MessageUpsert } from '../../domain/types.js';
 import type { Repositories } from '../repositories.js';
-import { createPgRepositories } from './index.js';
+import { createPgRepositories, EMBEDDING_DIMENSIONS } from './index.js';
 
 function message(id: string, overrides: Partial<MessageUpsert> = {}): MessageUpsert {
   return {
@@ -404,6 +404,110 @@ describe.skipIf(!testDatabaseUrl)('Postgres repositories', () => {
         UNREAD: { total: 2, unread: 2 },
         Label_1: { total: 1, unread: 1 },
       });
+    });
+  });
+
+  describe('ranked keyword search and filters', () => {
+    it('ranks full-text matches, finds CJK text in bodies, and filters by sender and date', async () => {
+      await repos.messages.upsertMany(accountId, [
+        message('weak', {
+          subject: 'Weekly digest',
+          bodyText: 'one mention of invoice among many other words here',
+          internalDate: at(5),
+        }),
+        message('strong', {
+          subject: 'Invoice 42',
+          bodyText: 'invoice invoice: your invoice is attached',
+          internalDate: at(1),
+        }),
+        message('cjk', {
+          subject: '通知',
+          bodyText: '请查收本月的发票，谢谢。',
+          internalDate: at(2),
+        }),
+        message('bob', {
+          from: { name: 'Bob', email: 'bob@shop.com' },
+          bodyText: 'invoice from the shop',
+          internalDate: at(3),
+        }),
+      ]);
+      const ids = async (text: string, filter = {}) =>
+        (await repos.messages.keywordSearch(accountId, text, filter, 10)).map((h) => h.messageId);
+      expect((await ids('invoice')).slice(0, 1)).toEqual(['strong']);
+      expect(await ids('invoice')).toEqual(expect.arrayContaining(['weak', 'strong', 'bob']));
+      expect(await ids('发票')).toEqual(['cjk']);
+      expect(await ids('invoice', { from: 'shop.com' })).toEqual(['bob']);
+      expect(await ids('invoice', { receivedAfter: at(2), receivedBefore: at(4) })).toEqual([
+        'bob',
+      ]);
+      expect(await ids('   ')).toEqual([]);
+      const listed = await repos.messages.list(accountId, { from: 'bob', limit: 10 });
+      expect(listed.items.map((m) => m.id)).toEqual(['bob']);
+    });
+  });
+
+  describe('vector store', () => {
+    const DIMS = EMBEDDING_DIMENSIONS;
+    const unit = (i: number) => Array.from({ length: DIMS }, (_, j) => (j === i ? 1 : 0));
+    const mix = (a: number, b: number, wb: number) =>
+      Array.from({ length: DIMS }, (_, j) => (j === a ? Math.sqrt(1 - wb * wb) : j === b ? wb : 0));
+
+    it('tracks which messages need embedding, and stays in step with message changes', async () => {
+      await repos.messages.upsertMany(accountId, [
+        message('m1', { internalDate: at(1) }),
+        message('m2', { internalDate: at(2) }),
+      ]);
+      const stale = async (model = 'model-a') =>
+        (await repos.vectors.stale(accountId, model, 10)).map((s) => s.messageId);
+      expect(await stale()).toEqual(['m2', 'm1']);
+      expect(await repos.vectors.stats(accountId, 'model-a')).toEqual({ indexed: 0, total: 2 });
+
+      await repos.vectors.upsert(accountId, [
+        { messageId: 'm1', model: 'model-a', contentHash: 'h1', embedding: unit(0) },
+        { messageId: 'm2', model: 'model-a', contentHash: 'h2', embedding: unit(1) },
+      ]);
+      expect(await stale()).toEqual([]);
+      expect(await stale('model-b')).toEqual(['m2', 'm1']);
+      expect(await repos.vectors.stats(accountId, 'model-a')).toEqual({ indexed: 2, total: 2 });
+
+      await new Promise((r) => setTimeout(r, 5));
+      await repos.messages.upsertMany(accountId, [
+        message('m1', { subject: 'edited', internalDate: at(1) }),
+      ]);
+      expect(await repos.vectors.stale(accountId, 'model-a', 10)).toEqual([
+        { messageId: 'm1', contentHash: 'h1' },
+      ]);
+      await repos.vectors.touch(accountId, ['m1']);
+      expect(await stale()).toEqual([]);
+
+      await repos.messages.deleteMany(accountId, ['m2']);
+      expect(await repos.vectors.stats(accountId, 'model-a')).toEqual({ indexed: 1, total: 1 });
+      await expect(
+        repos.vectors.upsert(accountId, [
+          { messageId: 'm1', model: 'x', contentHash: 'h', embedding: [1, 0] },
+        ]),
+      ).rejects.toThrow('dimensions');
+    });
+
+    it('returns nearest messages by cosine similarity, honoring filters', async () => {
+      await repos.messages.upsertMany(accountId, [
+        message('near', { internalDate: at(1), labelIds: ['INBOX'] }),
+        message('mid', { internalDate: at(2), labelIds: ['INBOX'] }),
+        message('far', { internalDate: at(3), labelIds: ['INBOX'] }),
+        message('archived-near', { internalDate: at(4), labelIds: [] }),
+      ]);
+      await repos.vectors.upsert(accountId, [
+        { messageId: 'near', model: 'm', contentHash: 'a', embedding: mix(0, 1, 0.1) },
+        { messageId: 'mid', model: 'm', contentHash: 'b', embedding: mix(0, 1, 0.6) },
+        { messageId: 'far', model: 'm', contentHash: 'c', embedding: unit(2) },
+        { messageId: 'archived-near', model: 'm', contentHash: 'd', embedding: unit(0) },
+      ]);
+      const all = await repos.vectors.search(accountId, unit(0), {}, 3);
+      expect(all.map((h) => h.messageId)).toEqual(['archived-near', 'near', 'mid']);
+      expect(all[0]!.score).toBeCloseTo(1);
+      const inbox = await repos.vectors.search(accountId, unit(0), { labelIds: ['INBOX'] }, 10);
+      expect(inbox.map((h) => h.messageId)).toEqual(['near', 'mid', 'far']);
+      expect(inbox[2]!.score).toBeCloseTo(0);
     });
   });
 
