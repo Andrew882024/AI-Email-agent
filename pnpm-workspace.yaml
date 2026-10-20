@@ -1,3 +1,8 @@
 packages:
   - packages/*
   - apps/*
+
+# Install scripts are off by default (pnpm 10+). esbuild (via tsx) ships its binary as an
+# optional platform package, so its postinstall check isn't needed.
+allowBuilds:
+  esbuild: false

@@ -12,6 +12,16 @@ const EnvSchema = z.object({
     .url({ protocol: /^postgres(ql)?$/ })
     .default('postgres://ai_email:ai_email@localhost:5434/ai_email'),
   SERVER_PORT: z.coerce.number().int().min(1).max(65535).default(4317),
+  /** Extra browser origins allowed to call the API (the server's own origin is always allowed). */
+  ALLOWED_ORIGINS: z
+    .string()
+    .default('http://localhost:5173,http://127.0.0.1:5173')
+    .transform((s) =>
+      s
+        .split(',')
+        .map((o) => o.trim())
+        .filter(Boolean),
+    ),
   APP_DATA_DIR: z.string().min(1).default(join(homedir(), '.ai-email-agent')),
   GOOGLE_CLIENT_ID: z.string().min(1),
   GOOGLE_CLIENT_SECRET: z.string().min(1),
@@ -29,6 +39,7 @@ export interface AppConfig {
   logLevel: 'trace' | 'debug' | 'info' | 'warn' | 'error' | 'fatal';
   databaseUrl: string;
   serverPort: number;
+  allowedOrigins: string[];
   /** Root for local app files (logs, uploads). Electron overrides this with its userData path. */
   dataDir: string;
   google: { clientId: string; clientSecret: string };
@@ -55,6 +66,7 @@ export function parseConfig(env: Record<string, string | undefined>): AppConfig 
     logLevel: e.LOG_LEVEL,
     databaseUrl: e.DATABASE_URL,
     serverPort: e.SERVER_PORT,
+    allowedOrigins: e.ALLOWED_ORIGINS,
     dataDir: e.APP_DATA_DIR,
     google: { clientId: e.GOOGLE_CLIENT_ID, clientSecret: e.GOOGLE_CLIENT_SECRET },
     sync: {

@@ -31,6 +31,8 @@ export interface GmailGateway {
   modifyMessages(ids: string[], change: { add?: string[]; remove?: string[] }): Promise<void>;
   /** `raw` is the complete RFC 5322 message. */
   sendMessage(raw: string, threadId?: string): Promise<{ id: string; threadId: string }>;
+  createLabel(name: string): Promise<GmailLabel>;
+  getAttachment(messageId: string, attachmentId: string): Promise<Buffer>;
 }
 
 export interface RemoteTask {
@@ -68,6 +70,8 @@ const GMAIL_COST = {
   getMessage: 5,
   listHistory: 2,
   listLabels: 1,
+  createLabel: 5,
+  getAttachment: 5,
   batchModify: 50,
   send: 100,
 } as const;
@@ -212,6 +216,26 @@ class GoogleGmailGateway implements GmailGateway {
       GMAIL_COST.send,
     );
     return { id: data.id ?? '', threadId: data.threadId ?? '' };
+  }
+
+  async createLabel(name: string) {
+    const { data } = await this.call(
+      () =>
+        this.api.users.labels.create({
+          userId: 'me',
+          requestBody: { name, labelListVisibility: 'labelShow', messageListVisibility: 'show' },
+        }),
+      GMAIL_COST.createLabel,
+    );
+    return data;
+  }
+
+  async getAttachment(messageId: string, attachmentId: string) {
+    const { data } = await this.call(
+      () => this.api.users.messages.attachments.get({ userId: 'me', messageId, id: attachmentId }),
+      GMAIL_COST.getAttachment,
+    );
+    return Buffer.from(data.data ?? '', 'base64url');
   }
 }
 

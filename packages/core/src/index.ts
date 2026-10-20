@@ -24,3 +24,6 @@ export * from './sync/mailbox.js';
 export * from './sync/outbox-worker.js';
 export * from './sync/tasks-sync.js';
 export * from './sync/scheduler.js';
+export * from './tools/compose.js';
+export * from './tools/registry.js';
+export * from './tools/email-tools.js';

@@ -1,0 +1,29 @@
+{
+  "name": "@ai-email/server",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start": "node dist/main.js",
+    "dev": "tsx watch src/main.ts"
+  },
+  "dependencies": {
+    "@ai-email/core": "workspace:*",
+    "@fastify/cors": "^11.3.1",
+    "fastify": "^5.12.7",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "kysely": "0.29.7",
+    "pino": "^10.4.0",
+    "tsx": "^4.23.15"
+  }
+}

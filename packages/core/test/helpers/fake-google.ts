@@ -161,6 +161,58 @@ export class FakeGmail implements GmailGateway {
     return { id, threadId: threadId ?? `t-${id}` };
   }
 
+  readonly attachments = new Map<string, Buffer>();
+
+  async createLabel(name: string) {
+    this.track('createLabel');
+    if (this.labels.some((l) => l.name?.toLowerCase() === name.toLowerCase())) {
+      throw googleError(409, 'Label name exists or conflicts');
+    }
+    const label: GmailLabel = { id: `Label_${this.labels.length + 1}`, name, type: 'user' };
+    this.labels.push(label);
+    return structuredClone(label);
+  }
+
+  async getAttachment(messageId: string, attachmentId: string) {
+    this.track('getAttachment');
+    const data = this.attachments.get(`${messageId}/${attachmentId}`);
+    if (!data) throw googleError(400, 'Invalid attachment id');
+    return data;
+  }
+
+  /** Give a message an attachment part (web-side). */
+  attach(
+    messageId: string,
+    file: {
+      partId: string;
+      attachmentId: string;
+      filename: string;
+      mimeType: string;
+      data: Buffer;
+    },
+  ): void {
+    const entry = this.messages.get(messageId)!;
+    const payload = entry.message.payload!;
+    const body = { ...payload, partId: '0' };
+    entry.message.payload = {
+      mimeType: 'multipart/mixed',
+      headers: payload.headers,
+      parts: [
+        { partId: '0', mimeType: body.mimeType, body: body.body },
+        {
+          partId: file.partId,
+          mimeType: file.mimeType,
+          filename: file.filename,
+          headers: [
+            { name: 'Content-Disposition', value: `attachment; filename="${file.filename}"` },
+          ],
+          body: { attachmentId: file.attachmentId, size: file.data.length },
+        },
+      ],
+    };
+    this.attachments.set(`${messageId}/${file.attachmentId}`, file.data);
+  }
+
   private record(record: Omit<GmailHistory, 'id'>): void {
     this.historyId++;
     this.history.push({ id: this.historyId, record: { id: String(this.historyId), ...record } });

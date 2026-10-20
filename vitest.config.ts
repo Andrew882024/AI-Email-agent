@@ -6,6 +6,7 @@ export default defineConfig({
     // Run tests against workspace package sources, no build step required.
     alias: {
       '@ai-email/shared': fileURLToPath(new URL('./packages/shared/src/index.ts', import.meta.url)),
+      '@ai-email/core': fileURLToPath(new URL('./packages/core/src/index.ts', import.meta.url)),
     },
   },
   test: {
