@@ -3,6 +3,10 @@ import type { Todo } from '../domain/types.js';
 import type { EventBus } from '../events/event-bus.js';
 import type { OutboxOpName, OutboxPayloads } from './outbox-ops.js';
 
+/** Opens the message in Gmail on the web, in the right account. */
+export const gmailLink = (accountEmail: string, messageId: string) =>
+  `https://mail.google.com/mail/?authuser=${encodeURIComponent(accountEmail)}#all/${messageId}`;
+
 export class NotFoundError extends Error {
   override name = 'NotFoundError';
 }
@@ -59,7 +63,7 @@ export class MailboxService {
       title: input.title,
       due: input.due,
     });
-    const link = `https://mail.google.com/mail/?authuser=${encodeURIComponent(account.email)}#all/${message.id}`;
+    const link = gmailLink(account.email, message.id);
     try {
       await this.enqueue(accountId, 'create_task', {
         todoId: todo.id,

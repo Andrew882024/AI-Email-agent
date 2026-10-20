@@ -42,6 +42,7 @@ function toDecision(row: Selectable<WorkflowDecisionsTable>): WorkflowDecision {
     reason: row.reason,
     status: row.status,
     error: row.error ?? undefined,
+    output: row.output ?? undefined,
     decidedAt: row.decided_at,
     appliedAt: row.applied_at ?? undefined,
   };
@@ -95,6 +96,14 @@ export class PgWorkflowRepository implements WorkflowRepository {
       .execute();
   }
 
+  async setAction(id: string, action: WorkflowAction) {
+    await this.db
+      .updateTable('workflows')
+      .set({ action: JSON.stringify(action), updated_at: sql`now()` })
+      .where('id', '=', id)
+      .execute();
+  }
+
   async delete(id: string) {
     await this.db.deleteFrom('workflows').where('id', '=', id).execute();
   }
@@ -109,6 +118,7 @@ export class PgWorkflowRepository implements WorkflowRepository {
       confidence: number;
       reason: string;
       status: DecisionStatus;
+      output?: Record<string, string>;
     }[],
   ) {
     for (const batch of chunk(decisions, 500)) {
@@ -124,6 +134,7 @@ export class PgWorkflowRepository implements WorkflowRepository {
             confidence: d.confidence,
             reason: d.reason,
             status: d.status,
+            output: d.output ? JSON.stringify(d.output) : null,
           })),
         )
         .onConflict((oc) => oc.columns(['workflow_id', 'message_id']).doNothing())

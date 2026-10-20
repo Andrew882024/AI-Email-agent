@@ -1,10 +1,11 @@
 import * as Dialog from '@radix-ui/react-dialog';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Pause, Play, RotateCcw, Trash2, X, Zap } from 'lucide-react';
+import { ArrowLeft, ExternalLink, Pause, Play, RotateCcw, Trash2, X, Zap } from 'lucide-react';
 import { useState } from 'react';
 import { callTool } from '../api/client';
 import {
   actionText,
+  DOCUMENT_NAMES,
   useWorkflow,
   useWorkflows,
   type Workflow,
@@ -89,6 +90,10 @@ function Details({ id, onBack }: { id: string; onBack: () => void }) {
   if (detail.isLoading || !detail.data) return <Spinner />;
   const { workflow, decisions, threshold } = detail.data;
   const shown = decisions.filter((d) => showSkipped || d.status !== 'skipped');
+  const doc = workflow.action.document;
+  const docUrl = doc?.pdfUrl ?? doc?.url;
+  // Rows can be removed from a Sheet; entries in a Doc/PDF can't be found reliably once edited.
+  const canUndo = workflow.type !== 'document' || doc?.format === 'sheet';
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -133,6 +138,29 @@ function Details({ id, onBack }: { id: string; onBack: () => void }) {
           {actionText(workflow)} · {workflow.mode === 'persistent' ? 'also new mail' : 'one time'} ·
           acts at ≥ {Math.round(threshold * 100)}% confidence
         </dd>
+        {doc && (
+          <>
+            <dt className="text-gray-500">Fields</dt>
+            <dd>{doc.fields.map((f) => f.name).join(', ')}</dd>
+            <dt className="text-gray-500">Document</dt>
+            <dd>
+              {docUrl ? (
+                <a
+                  href={docUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1 text-blue-700 hover:underline"
+                >
+                  Open {DOCUMENT_NAMES[doc.format]} <ExternalLink className="h-3 w-3" />
+                </a>
+              ) : (
+                <span className="text-gray-500">
+                  Created in the “AI Email Agent” Drive folder when you apply
+                </span>
+              )}
+            </dd>
+          </>
+        )}
         {workflow.error && (
           <>
             <dt className="text-red-700">Error</dt>
@@ -176,8 +204,16 @@ function Details({ id, onBack }: { id: string; onBack: () => void }) {
                 {d.reason}
                 {d.phase === 'incremental' && ' · new mail'}
               </div>
+              {d.output && d.status !== 'skipped' && (
+                <div className="truncate text-xs text-gray-700">
+                  {/* In the workflow's field order (stored JSON doesn't keep key order). */}
+                  {(doc?.fields.map((f) => f.name) ?? Object.keys(d.output))
+                    .map((k) => `${k}: ${d.output?.[k] || '—'}`)
+                    .join(' · ')}
+                </div>
+              )}
             </div>
-            {d.status === 'applied' && (
+            {d.status === 'applied' && canUndo && (
               <IconButton
                 label="Undo for this email"
                 onClick={() =>

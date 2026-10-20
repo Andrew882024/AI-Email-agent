@@ -202,7 +202,7 @@ export interface WorkflowsTable {
   id: Generated<string>;
   account_id: string;
   name: string;
-  type: 'label' | 'todo' | 'archive' | 'star_read';
+  type: 'label' | 'todo' | 'archive' | 'star_read' | 'document';
   mode: 'persistent' | 'one_shot';
   instruction: string;
   criteria: string;
@@ -227,6 +227,7 @@ export interface WorkflowDecisionsTable {
   reason: Generated<string>;
   status: 'pending' | 'applied' | 'skipped' | 'undone' | 'failed';
   error: string | null;
+  output: Json<Record<string, string>> | null;
   decided_at: Generated<Date>;
   applied_at: Date | null;
 }

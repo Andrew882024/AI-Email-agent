@@ -356,6 +356,7 @@ export interface WorkflowRepository {
   /** Newest first. */
   list(accountId: string, filter?: { status?: WorkflowStatus }): Promise<Workflow[]>;
   setStatus(id: string, status: WorkflowStatus, error?: string): Promise<void>;
+  setAction(id: string, action: WorkflowAction): Promise<void>;
   delete(id: string): Promise<void>;
   /** Insert decisions; messages already decided by this workflow are left alone. */
   recordDecisions(
@@ -368,6 +369,7 @@ export interface WorkflowRepository {
       confidence: number;
       reason: string;
       status: DecisionStatus;
+      output?: Record<string, string>;
     }[],
   ): Promise<void>;
   /** Of these messages, the ones this workflow already decided. */

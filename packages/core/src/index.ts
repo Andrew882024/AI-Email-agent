@@ -36,5 +36,6 @@ export * from './rag/hybrid-search.js';
 export * from './agent/files.js';
 export * from './agent/memory.js';
 export * from './agent/agent.js';
+export * from './workflows/documents.js';
 export * from './workflows/engine.js';
 export * from './workflows/tools.js';

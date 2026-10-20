@@ -48,11 +48,16 @@ describe.skipIf(!testDatabaseUrl)('migrator', () => {
       ['0003_rag', 'Success'],
       ['0004_chat', 'Success'],
       ['0005_workflows', 'Success'],
+      ['0006_document_workflows', 'Success'],
     ]);
     expect(await tables()).toEqual(APP_TABLES);
 
     expect(await migrateToLatest(t.db)).toEqual([]);
 
+    expect((await migrateDown(t.db)).map((r) => r.migrationName)).toEqual([
+      '0006_document_workflows',
+    ]);
+    expect(await tables()).toEqual(APP_TABLES);
     const workflowTables = ['workflow_decisions', 'workflows'];
     expect((await migrateDown(t.db)).map((r) => r.migrationName)).toEqual(['0005_workflows']);
     expect(await tables()).toEqual(APP_TABLES.filter((name) => !workflowTables.includes(name)));

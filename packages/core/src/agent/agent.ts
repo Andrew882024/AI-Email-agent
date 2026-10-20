@@ -102,6 +102,10 @@ export function systemPrompt(input: {
     '  as their request (unless they explicitly said to go ahead without confirming).',
     '  2) create_workflow (persistent = also new mail; one_shot = one-time). 3) Show the preview: how many match,',
     '  a few examples and close calls. 4) apply_workflow; the user approves it in the app.',
+    '- To keep a table, document or PDF of certain emails ("put my orders in a spreadsheet"), use a document',
+    '  workflow: propose the fields to extract (name + what/format) and the format (Excel → sheet) along with the',
+    '  rule, and confirm both. Received date, subject, sender and a Gmail link are added automatically. In the',
+    '  preview, show a few extracted rows. After applying, give the link to the document.',
     '- Be concise. Reply in the language the user writes in.',
     ...(memories.length > 0
       ? [

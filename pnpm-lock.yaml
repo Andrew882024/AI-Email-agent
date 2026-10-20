@@ -142,9 +142,18 @@ importers:
       '@google/genai':
         specifier: 2.30.0
         version: 2.30.0
+      '@googleapis/docs':
+        specifier: 14.1.1
+        version: 14.1.1
+      '@googleapis/drive':
+        specifier: 26.0.2
+        version: 26.0.2
       '@googleapis/gmail':
         specifier: ^22.0.2
         version: 22.0.2
+      '@googleapis/sheets':
+        specifier: 18.1.1
+        version: 18.1.1
       '@googleapis/tasks':
         specifier: ^17.0.1
         version: 17.0.1
@@ -562,8 +571,20 @@ packages:
       '@modelcontextprotocol/sdk':
         optional: true
 
+  '@googleapis/docs@14.1.1':
+    resolution: {integrity: sha512-trSnsaDWDIt+nZDUMn0sSuSwBzLvic2QOplmWogJgMX3pcDLadyw8G72UZKfmYQFZzt6ObUy5lcd95lJJUgajQ==}
+    engines: {node: '>=22.0.0'}
+
+  '@googleapis/drive@26.0.2':
+    resolution: {integrity: sha512-VeKVZvzgH4ioczJZrZ5sy73RJbHrYLI1XZIZ3ZqGKQhC4U03XsOOOiBHKqvH4F9vbXrxR2LawmktoIJuTJhzYg==}
+    engines: {node: '>=22.0.0'}
+
   '@googleapis/gmail@22.0.2':
     resolution: {integrity: sha512-/Yg6UwLZaI74jY4Q8RhAFlEw4q+71c47oKlqr3ArGTG4HERa0S5NgzmTjECcV720tATnz9bpIvAnJ91VVnNHVA==}
+    engines: {node: '>=22.0.0'}
+
+  '@googleapis/sheets@18.1.1':
+    resolution: {integrity: sha512-T2AOp0AhDdZ3imQyy3d8AnRMdPFwibKKcmKttWxLBKeiJKmE9p7RFrBpdbswpJ1d3cPdO5kvcYDuKajUFqwraA==}
     engines: {node: '>=22.0.0'}
 
   '@googleapis/tasks@17.0.1':
@@ -4100,7 +4121,25 @@ snapshots:
       - supports-color
       - utf-8-validate
 
+  '@googleapis/docs@14.1.1':
+    dependencies:
+      googleapis-common: 9.3.1
+    transitivePeerDependencies:
+      - supports-color
+
+  '@googleapis/drive@26.0.2':
+    dependencies:
+      googleapis-common: 9.3.1
+    transitivePeerDependencies:
+      - supports-color
+
   '@googleapis/gmail@22.0.2':
+    dependencies:
+      googleapis-common: 9.3.1
+    transitivePeerDependencies:
+      - supports-color
+
+  '@googleapis/sheets@18.1.1':
     dependencies:
       googleapis-common: 9.3.1
     transitivePeerDependencies:

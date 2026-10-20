@@ -6,6 +6,7 @@ import {
   ChatFileStore,
   createWorkflowTools,
   WorkflowEngine,
+  GoogleDriveDocumentSink,
   GeminiProvider,
   MemoryService,
   AesGcmSecretCipher,
@@ -133,7 +134,16 @@ export function createServices(config: AppConfig, host: HostCapabilities): Servi
   let workflows: WorkflowEngine | undefined;
   if (config.geminiApiKey) {
     const llm = new GeminiProvider({ apiKey: config.geminiApiKey, model: config.llm.model });
-    workflows = new WorkflowEngine({ repos, llm, embeddings, tools, events, logger });
+    workflows = new WorkflowEngine({
+      repos,
+      llm,
+      embeddings,
+      tools,
+      events,
+      logger,
+      actions,
+      documents: new GoogleDriveDocumentSink(gateways),
+    });
     tools.register(...createWorkflowTools(workflows, repos));
     // Persistent workflows decide every new email as sync brings it in.
     const engine = workflows;

@@ -1,5 +1,8 @@
 import { HistoryExpiredError } from '../../src/google/errors.js';
 import type {
+  DocSection,
+  DocumentsGateway,
+  DriveFile,
   GatewayProvider,
   GmailGateway,
   GmailHistory,
@@ -278,9 +281,113 @@ export class FakeTasks implements TasksGateway {
   }
 }
 
+export interface FakeDriveFile {
+  id: string;
+  kind: 'folder' | 'spreadsheet' | 'document' | 'pdf';
+  name: string;
+  parent?: string;
+  /** spreadsheet */
+  rows: string[][];
+  headerFormatted?: boolean;
+  /** document: the title (if any) and sections, in order */
+  title?: string;
+  sections: DocSection[];
+  /** pdf: the exported document, as text */
+  content?: string;
+  /** pdf: how many times it was written */
+  writes: number;
+}
+
+/** In-memory Drive with Sheets and Docs. */
+export class FakeDocuments implements DocumentsGateway {
+  readonly files = new Map<string, FakeDriveFile>();
+  private seq = 0;
+  readonly failures: Record<string, unknown[]> = {};
+
+  private new(file: Omit<FakeDriveFile, 'id' | 'rows' | 'sections' | 'writes'>): FakeDriveFile {
+    const created = { id: `file-${++this.seq}`, rows: [], sections: [], writes: 0, ...file };
+    this.files.set(created.id, created);
+    return created;
+  }
+
+  private get(id: string, kind: FakeDriveFile['kind']): FakeDriveFile {
+    const file = this.files.get(id);
+    if (!file || file.kind !== kind) throw googleError(404, `File not found: ${id}`);
+    return file;
+  }
+
+  private url = (f: FakeDriveFile): DriveFile => ({
+    id: f.id,
+    url: `https://docs.example/${f.kind}/${f.id}`,
+  });
+
+  of(kind: FakeDriveFile['kind']): FakeDriveFile[] {
+    return [...this.files.values()].filter((f) => f.kind === kind);
+  }
+
+  async ensureFolder(name: string) {
+    this.fail('ensureFolder');
+    return (this.of('folder').find((f) => f.name === name) ?? this.new({ kind: 'folder', name }))
+      .id;
+  }
+
+  async createFile(kind: 'spreadsheet' | 'document', title: string, folderId: string) {
+    this.fail('createFile');
+    this.get(folderId, 'folder');
+    return this.url(this.new({ kind, name: title, parent: folderId }));
+  }
+
+  async appendRows(spreadsheetId: string, rows: string[][]) {
+    this.fail('appendRows');
+    this.get(spreadsheetId, 'spreadsheet').rows.push(...rows.map((r) => [...r]));
+  }
+
+  async formatHeader(spreadsheetId: string) {
+    this.get(spreadsheetId, 'spreadsheet').headerFormatted = true;
+  }
+
+  async readRows(spreadsheetId: string) {
+    return this.get(spreadsheetId, 'spreadsheet').rows.map((r) => [...r]);
+  }
+
+  async deleteRow(spreadsheetId: string, index: number) {
+    this.get(spreadsheetId, 'spreadsheet').rows.splice(index, 1);
+  }
+
+  async appendSections(documentId: string, sections: DocSection[], title?: string) {
+    this.fail('appendSections');
+    const doc = this.get(documentId, 'document');
+    if (title) doc.title = title;
+    doc.sections.push(...sections);
+  }
+
+  async savePdf(documentId: string, target: { name: string; folderId: string; fileId?: string }) {
+    this.fail('savePdf');
+    const doc = this.get(documentId, 'document');
+    const content = [
+      doc.title,
+      ...doc.sections.map((s) =>
+        [s.heading, ...s.fields.map((f) => `${f.label}: ${f.value}`)].join('\n'),
+      ),
+    ].join('\n\n');
+    const pdf =
+      (target.fileId && this.files.get(target.fileId)) ||
+      this.new({ kind: 'pdf', name: target.name, parent: target.folderId });
+    pdf.content = content;
+    pdf.writes++;
+    return this.url(pdf);
+  }
+
+  private fail(method: string): void {
+    const error = this.failures[method]?.shift();
+    if (error) throw error;
+  }
+}
+
 export class FakeGateways implements GatewayProvider {
   readonly fakeGmail = new FakeGmail();
   readonly fakeTasks = new FakeTasks();
+  readonly fakeDocuments = new FakeDocuments();
   /** Set to make every gateway lookup fail (e.g. ReauthRequiredError). */
   failWith?: unknown;
 
@@ -292,5 +399,10 @@ export class FakeGateways implements GatewayProvider {
   async tasks() {
     if (this.failWith) throw this.failWith;
     return this.fakeTasks;
+  }
+
+  async documents() {
+    if (this.failWith) throw this.failWith;
+    return this.fakeDocuments;
   }
 }

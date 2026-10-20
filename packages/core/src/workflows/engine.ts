@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import type { MessageFilter, NewWorkflow, Repositories } from '../db/repositories.js';
 import {
+  type DocumentAction,
+  type DocumentFormat,
   type Message,
   SystemLabel,
   type Workflow,
@@ -10,10 +12,12 @@ import type { EventBus } from '../events/event-bus.js';
 import { mapLimit } from '../google/retry.js';
 import { generateObject } from '../llm/structured.js';
 import type { EmbeddingProvider, LLMProvider } from '../llm/types.js';
+import type { ActionLogger } from '../logging/action-logger.js';
 import type { Logger } from '../logging/system-logger.js';
 import { emailChunk } from '../rag/chunk.js';
-import { NotFoundError } from '../sync/mailbox.js';
+import { gmailLink, NotFoundError } from '../sync/mailbox.js';
 import { type ToolContext, ToolError, type ToolRegistry } from '../tools/registry.js';
+import { documentColumns, type DocumentEntry, type DocumentSink } from './documents.js';
 
 export type WorkflowSpec = Omit<NewWorkflow, 'accountId' | 'sessionId'>;
 
@@ -32,7 +36,11 @@ export interface WorkflowPreview {
     date: string;
     confidence: number;
     reason: string;
+    /** document workflows: the values extracted from the email, by field name. */
+    values?: Record<string, string>;
   }[];
+  /** document workflows: what will be created on approval. */
+  document?: { format: DocumentFormat; title: string; columns: string[] };
   /** Close calls that will NOT be changed, so the rule can be tuned. */
   nearMisses: { messageId: string; subject: string; confidence: number; reason: string }[];
 }
@@ -44,6 +52,10 @@ export interface WorkflowEngineOptions {
   tools: ToolRegistry;
   events: EventBus;
   logger: Logger;
+  /** Where document workflows write; without it, document workflows are unavailable. */
+  documents?: DocumentSink;
+  /** Records document writes (mailbox changes are logged by the tools). */
+  actions?: ActionLogger;
   /** Max emails recalled on the first run. */
   candidateLimit?: number;
   /** Emails per classification request. */
@@ -68,6 +80,12 @@ const Classification = z.object({
   ),
 });
 
+export const DOCUMENT_NAMES: Record<DocumentFormat, string> = {
+  sheet: 'Google Sheet',
+  doc: 'Google Doc',
+  pdf: 'PDF',
+};
+
 /** Semantic recall keeps hits within this distance of the best one (absolute scores vary by mailbox). */
 const RECALL_WINDOW = 0.12;
 const RECALL_MIN = 50;
@@ -87,6 +105,8 @@ function describeAction(w: Pick<Workflow, 'type' | 'action'>): string {
           .filter(Boolean)
           .join(' and ') || 'nothing'
       );
+    case 'document':
+      return `record it in the ${DOCUMENT_NAMES[w.action.document!.format]} "${w.action.document!.title}"`;
   }
 }
 
@@ -140,6 +160,25 @@ export class WorkflowEngine {
         'A star_read workflow needs action.star and/or action.markRead',
       );
     }
+    if (spec.type === 'document') {
+      const doc = spec.action.document;
+      if (!doc?.title.trim() || doc.fields.length === 0)
+        throw new ToolError(
+          'invalid_input',
+          'A document workflow needs action.document with a format, a title and fields',
+        );
+      const names = doc.fields.map((f) => f.name.trim().toLowerCase());
+      if (new Set(names).size !== names.length || names.includes(''))
+        throw new ToolError('invalid_input', 'Document fields need distinct, non-empty names');
+      if (!this.options.documents)
+        throw new ToolError('invalid_input', 'Document workflows are not available');
+    }
+  }
+
+  private sink(): DocumentSink {
+    if (!this.options.documents)
+      throw new ToolError('invalid_input', 'Document workflows are not available');
+    return this.options.documents;
   }
 
   private async preview(workflow: Workflow): Promise<WorkflowPreview> {
@@ -147,6 +186,11 @@ export class WorkflowEngine {
     const candidates = await this.recall(workflow);
     const decisions = await this.classify(workflow, candidates);
     const threshold = this.threshold(workflow);
+    const outputs = await this.extract(
+      workflow,
+      candidates,
+      decisions.filter((d) => d.match && d.confidence >= threshold).map((d) => d.messageId),
+    );
     await repos.workflows.recordDecisions(
       workflow.id,
       workflow.accountId,
@@ -154,12 +198,14 @@ export class WorkflowEngine {
         ...d,
         phase: 'backfill',
         status: d.match && d.confidence >= threshold ? 'pending' : 'skipped',
+        output: outputs.get(d.messageId),
       })),
     );
     await repos.workflows.setStatus(workflow.id, 'awaiting_approval');
     this.changed(workflow);
 
     const byId = new Map(candidates.map((m) => [m.id, m]));
+    const doc = workflow.action.document;
     const matched = decisions
       .filter((d) => d.match && d.confidence >= threshold)
       .sort((a, b) => b.confidence - a.confidence);
@@ -181,8 +227,17 @@ export class WorkflowEngine {
           date: m.internalDate.toISOString().slice(0, 10),
           confidence: d.confidence,
           reason: d.reason,
+          ...(outputs.has(d.messageId) && { values: outputs.get(d.messageId) }),
         };
       }),
+      ...(workflow.type === 'document' &&
+        doc && {
+          document: {
+            format: doc.format,
+            title: doc.title,
+            columns: doc.format === 'sheet' ? documentColumns(doc) : doc.fields.map((f) => f.name),
+          },
+        }),
       nearMisses: near.slice(0, 3).map((d) => ({
         messageId: d.messageId,
         subject: byId.get(d.messageId)!.subject,
@@ -247,6 +302,7 @@ export class WorkflowEngine {
       const matched = decisions
         .filter((d) => d.match && d.confidence >= threshold)
         .map((d) => d.messageId);
+      const outputs = await this.extract(workflow, fresh, matched);
       await repos.workflows.recordDecisions(
         workflow.id,
         accountId,
@@ -254,6 +310,7 @@ export class WorkflowEngine {
           ...d,
           phase: 'incremental',
           status: matched.includes(d.messageId) ? 'pending' : 'skipped',
+          output: outputs.get(d.messageId),
         })),
       );
       if (matched.length > 0) await this.act(workflow, matched);
@@ -292,6 +349,19 @@ export class WorkflowEngine {
         if (workflow.action.star) await tools.invoke('unstar', ctx, ids);
         if (workflow.action.markRead) await tools.invoke('mark_unread', ctx, ids);
         break;
+      case 'document': {
+        const doc = workflow.action.document!;
+        if (!this.sink().canRemove(doc.format))
+          throw new ToolError(
+            'invalid_input',
+            `Entries can't be removed from a ${DOCUMENT_NAMES[doc.format]} one by one; edit the document instead`,
+          );
+        const account = await repos.accounts.getById(accountId);
+        await this.track(workflow, 'remove_document_entry', [messageId], () =>
+          this.sink().remove(accountId, doc, gmailLink(account?.email ?? '', messageId)),
+        );
+        break;
+      }
     }
     await repos.workflows.setDecisionStatus(workflow.id, [messageId], 'undone');
     this.changed(workflow);
@@ -524,11 +594,143 @@ export class WorkflowEngine {
           });
         }
         break;
+      case 'document':
+        await run(messageIds, () => this.record(workflow, messageIds));
+        break;
     }
     await repos.workflows.setDecisionStatus(workflow.id, applied, 'applied');
     for (const f of failed)
       await repos.workflows.setDecisionStatus(workflow.id, [f.id], 'failed', f.error);
     return { applied: applied.length, failed: failed.length };
+  }
+
+  /**
+   * The model reads each matched email and fills in the document's fields. Keys are f1..fn rather
+   * than the user's field names, which can be any text.
+   */
+  private async extract(
+    workflow: Workflow,
+    messages: Message[],
+    matchedIds: string[],
+  ): Promise<Map<string, Record<string, string>>> {
+    const doc = workflow.action.document;
+    const result = new Map<string, Record<string, string>>();
+    if (workflow.type !== 'document' || !doc || matchedIds.length === 0) return result;
+    const wanted = new Set(matchedIds);
+    const matched = messages.filter((m) => wanted.has(m.id));
+    const keys = doc.fields.map((_, i) => `f${i + 1}`);
+    const Extraction = z.object({
+      rows: z.array(
+        z.object({
+          messageId: z.string(),
+          values: z.object(
+            Object.fromEntries(
+              doc.fields.map((f, i) => [
+                keys[i]!,
+                z.string().default('').describe(`${f.name}: ${f.description}`),
+              ]),
+            ),
+          ),
+        }),
+      ),
+    });
+    const system = [
+      'You fill in a document the user keeps about their emails, one entry per email.',
+      `The user's request: ${workflow.instruction}`,
+      'Fields:',
+      ...doc.fields.map((f, i) => `- ${keys[i]} "${f.name}": ${f.description}`),
+      '',
+      'Fill in the fields for every email in the list. Copy codes, numbers, amounts and names exactly as written.',
+      'Use "" when the email does not say. Write dates as YYYY-MM-DD (add HH:mm when a time is given) unless the',
+      'field says otherwise. Keep values short unless the field asks for a summary.',
+    ].join('\n');
+    const size = 8;
+    const batches: Message[][] = [];
+    for (let i = 0; i < matched.length; i += size) batches.push(matched.slice(i, i + size));
+    await mapLimit(batches, 3, async (batch) => {
+      const text = batch
+        .map((m) => `### Email ${m.id}\n${emailChunk(m).slice(0, 6000)}`)
+        .join('\n\n');
+      const out = await generateObject(
+        this.options.llm,
+        { system, temperature: 0, messages: [{ role: 'user', parts: [{ type: 'text', text }] }] },
+        Extraction,
+      );
+      const byId = new Map(out.rows.map((r) => [r.messageId, r.values]));
+      for (const m of batch) {
+        const values = byId.get(m.id) ?? {};
+        result.set(
+          m.id,
+          Object.fromEntries(doc.fields.map((f, i) => [f.name, (values[keys[i]!] ?? '').trim()])),
+        );
+      }
+    });
+    return result;
+  }
+
+  /** Write matched emails (oldest first) to the workflow's document, creating it on first use. */
+  private async record(workflow: Workflow, messageIds: string[]): Promise<void> {
+    const { repos } = this.options;
+    const sink = this.sink();
+    let doc = workflow.action.document!;
+    if (!doc.documentId) {
+      doc = await this.track(workflow, 'create_document', [], () =>
+        sink.create(workflow.accountId, doc),
+      );
+      await this.saveDocument(workflow, doc);
+    }
+    const wanted = new Set(messageIds);
+    const outputs = new Map(
+      (await repos.workflows.decisions(workflow.id, { status: 'pending', limit: 5000 }))
+        .filter((d) => wanted.has(d.messageId))
+        .map((d) => [d.messageId, d.output ?? {}]),
+    );
+    const account = await repos.accounts.getById(workflow.accountId);
+    const entries: DocumentEntry[] = (await repos.messages.getByIds(workflow.accountId, messageIds))
+      .sort((a, b) => a.internalDate.getTime() - b.internalDate.getTime())
+      .map((m) => ({
+        messageId: m.id,
+        received: m.internalDate,
+        subject: m.subject,
+        from: m.from && (m.from.name ? `${m.from.name} <${m.from.email}>` : m.from.email),
+        link: gmailLink(account?.email ?? '', m.id),
+        values: outputs.get(m.id) ?? {},
+      }));
+    const current = doc;
+    const updated = await this.track(
+      workflow,
+      'append_to_document',
+      entries.map((e) => e.messageId),
+      () => sink.append(workflow.accountId, current, entries),
+    );
+    if (updated !== current) await this.saveDocument(workflow, updated);
+  }
+
+  private async saveDocument(workflow: Workflow, document: DocumentAction): Promise<void> {
+    workflow.action = { ...workflow.action, document };
+    await this.options.repos.workflows.setAction(workflow.id, workflow.action);
+  }
+
+  /** Log a document write as the workflow (mailbox changes are logged by the tools themselves). */
+  private track<T>(
+    workflow: Workflow,
+    action: string,
+    targetIds: string[],
+    fn: () => Promise<T>,
+  ): Promise<T> {
+    const doc = workflow.action.document;
+    return this.options.actions
+      ? this.options.actions.track(
+          {
+            accountId: workflow.accountId,
+            actor: `workflow:${workflow.id}`,
+            action,
+            targetIds,
+            params: { format: doc?.format, title: doc?.title, documentId: doc?.documentId },
+          },
+          fn,
+        )
+      : fn();
   }
 
   private changed(workflow: Pick<Workflow, 'id' | 'accountId'>): void {

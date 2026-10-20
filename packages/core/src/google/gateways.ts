@@ -1,4 +1,8 @@
+import { Readable } from 'node:stream';
+import { docs, type docs_v1 } from '@googleapis/docs';
+import { drive, type drive_v3 } from '@googleapis/drive';
 import { gmail, type gmail_v1 } from '@googleapis/gmail';
+import { sheets, type sheets_v4 } from '@googleapis/sheets';
 import { tasks, type tasks_v1 } from '@googleapis/tasks';
 import type { OAuth2Client } from 'google-auth-library';
 import { isInvalidGrantError, ReauthRequiredError } from '../auth/errors.js';
@@ -57,10 +61,50 @@ export interface TasksGateway {
   listChangedTasks(tasklistId: string, updatedMin?: Date): Promise<RemoteTask[]>;
 }
 
+export interface DriveFile {
+  id: string;
+  /** Where the user opens it. */
+  url: string;
+}
+
+/** One email's entry in a Google Doc: a heading, "label: value" lines and a link. */
+export interface DocSection {
+  heading: string;
+  fields: { label: string; value: string }[];
+  link?: { text: string; url: string };
+}
+
+/**
+ * Google Drive / Sheets / Docs operations for workflow documents. With the drive.file scope the app
+ * only sees files it created itself.
+ */
+export interface DocumentsGateway {
+  /** The folder with this name that the app created (created now if there is none). */
+  ensureFolder(name: string): Promise<string>;
+  /** A new, empty Google Sheet or Doc in the folder. */
+  createFile(kind: 'spreadsheet' | 'document', title: string, folderId: string): Promise<DriveFile>;
+  /** Append rows to the first sheet. Values are stored as typed, never parsed as formulas. */
+  appendRows(spreadsheetId: string, rows: string[][]): Promise<void>;
+  /** Make the first row of the first sheet a bold, frozen header. */
+  formatHeader(spreadsheetId: string): Promise<void>;
+  /** Every row of the first sheet. */
+  readRows(spreadsheetId: string): Promise<string[][]>;
+  /** Delete a row (0-based) of the first sheet. */
+  deleteRow(spreadsheetId: string, index: number): Promise<void>;
+  /** Append sections at the end of a Doc, after an optional title. */
+  appendSections(documentId: string, sections: DocSection[], title?: string): Promise<void>;
+  /** Export a Doc as PDF: into `fileId` (replacing its content) or a new file in the folder. */
+  savePdf(
+    documentId: string,
+    target: { name: string; folderId: string; fileId?: string },
+  ): Promise<DriveFile>;
+}
+
 /** Hands out gateways bound to an account's credentials. */
 export interface GatewayProvider {
   gmail(accountId: string): Promise<GmailGateway>;
   tasks(accountId: string): Promise<TasksGateway>;
+  documents(accountId: string): Promise<DocumentsGateway>;
 }
 
 /** Gmail quota units per call (developers.google.com/gmail/api/reference/quota). */
@@ -307,6 +351,234 @@ class GoogleTasksGateway implements TasksGateway {
   }
 }
 
+const MIME = {
+  folder: 'application/vnd.google-apps.folder',
+  spreadsheet: 'application/vnd.google-apps.spreadsheet',
+  document: 'application/vnd.google-apps.document',
+  pdf: 'application/pdf',
+} as const;
+
+/** Text the Docs API accepts: no control characters other than newlines. */
+const docText = (s: string) =>
+  // eslint-disable-next-line no-control-regex -- stripping control characters is the point
+  s.replace(/\r\n?/g, '\n').replace(/[\u0000-\u0009\u000b-\u001f]/g, ' ');
+
+class GoogleDocumentsGateway implements DocumentsGateway {
+  private readonly drive: drive_v3.Drive;
+  private readonly sheets: sheets_v4.Sheets;
+  private readonly docs: docs_v1.Docs;
+
+  constructor(
+    client: OAuth2Client,
+    private readonly call: ReturnType<typeof caller>,
+  ) {
+    this.drive = drive({ version: 'v3', auth: client });
+    this.sheets = sheets({ version: 'v4', auth: client });
+    this.docs = docs({ version: 'v1', auth: client });
+  }
+
+  async ensureFolder(name: string) {
+    const quoted = name.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    const { data } = await this.call(() =>
+      this.drive.files.list({
+        q: `mimeType = '${MIME.folder}' and name = '${quoted}' and trashed = false`,
+        fields: 'files(id)',
+        spaces: 'drive',
+        pageSize: 1,
+      }),
+    );
+    const existing = data.files?.[0]?.id;
+    if (existing) return existing;
+    const created = await this.call(() =>
+      this.drive.files.create({ requestBody: { name, mimeType: MIME.folder }, fields: 'id' }),
+    );
+    return created.data.id ?? '';
+  }
+
+  async createFile(kind: 'spreadsheet' | 'document', title: string, folderId: string) {
+    const { data } = await this.call(() =>
+      this.drive.files.create({
+        requestBody: { name: title, mimeType: MIME[kind], parents: [folderId] },
+        fields: 'id,webViewLink',
+      }),
+    );
+    return { id: data.id ?? '', url: data.webViewLink ?? '' };
+  }
+
+  private async firstSheetId(spreadsheetId: string): Promise<number> {
+    const { data } = await this.call(() =>
+      this.sheets.spreadsheets.get({ spreadsheetId, fields: 'sheets.properties.sheetId' }),
+    );
+    return data.sheets?.[0]?.properties?.sheetId ?? 0;
+  }
+
+  async appendRows(spreadsheetId: string, rows: string[][]) {
+    if (rows.length === 0) return;
+    await this.call(() =>
+      this.sheets.spreadsheets.values.append({
+        spreadsheetId,
+        range: 'A1',
+        valueInputOption: 'RAW', // "=..." stays text: email content must never become a formula
+        insertDataOption: 'INSERT_ROWS',
+        requestBody: { values: rows },
+      }),
+    );
+  }
+
+  async formatHeader(spreadsheetId: string) {
+    const sheetId = await this.firstSheetId(spreadsheetId);
+    await this.call(() =>
+      this.sheets.spreadsheets.batchUpdate({
+        spreadsheetId,
+        requestBody: {
+          requests: [
+            {
+              updateSheetProperties: {
+                properties: { sheetId, gridProperties: { frozenRowCount: 1 } },
+                fields: 'gridProperties.frozenRowCount',
+              },
+            },
+            {
+              repeatCell: {
+                range: { sheetId, startRowIndex: 0, endRowIndex: 1 },
+                cell: { userEnteredFormat: { textFormat: { bold: true } } },
+                fields: 'userEnteredFormat.textFormat.bold',
+              },
+            },
+          ],
+        },
+      }),
+    );
+  }
+
+  async readRows(spreadsheetId: string) {
+    const { data } = await this.call(() =>
+      this.sheets.spreadsheets.values.get({ spreadsheetId, range: 'A:ZZ' }),
+    );
+    return (data.values ?? []).map((row) => row.map((v) => String(v ?? '')));
+  }
+
+  async deleteRow(spreadsheetId: string, index: number) {
+    const sheetId = await this.firstSheetId(spreadsheetId);
+    await this.call(() =>
+      this.sheets.spreadsheets.batchUpdate({
+        spreadsheetId,
+        requestBody: {
+          requests: [
+            {
+              deleteDimension: {
+                range: { sheetId, dimension: 'ROWS', startIndex: index, endIndex: index + 1 },
+              },
+            },
+          ],
+        },
+      }),
+    );
+  }
+
+  async appendSections(documentId: string, sections: DocSection[], title?: string) {
+    const { data } = await this.call(() =>
+      this.docs.documents.get({ documentId, fields: 'body.content(endIndex)' }),
+    );
+    const start = (data.body?.content?.at(-1)?.endIndex ?? 2) - 1;
+    // Build the text, remembering the ranges to style. Docs indexes count UTF-16 code units, like JS.
+    let text = '';
+    const paragraphs: { start: number; end: number; style: string }[] = [];
+    const bold: { start: number; end: number }[] = [];
+    const links: { start: number; end: number; url: string }[] = [];
+    const add = (s: string) => {
+      const from = start + text.length;
+      text += s;
+      return { start: from, end: start + text.length };
+    };
+    if (title) paragraphs.push({ ...add(`${docText(title)}\n`), style: 'TITLE' });
+    for (const section of sections) {
+      paragraphs.push({ ...add(`${docText(section.heading)}\n`), style: 'HEADING_2' });
+      for (const field of section.fields) {
+        bold.push(add(`${docText(field.label)}:`));
+        add(` ${docText(field.value) || '—'}\n`);
+      }
+      if (section.link) {
+        links.push({ ...add(docText(section.link.text)), url: section.link.url });
+        add('\n');
+      }
+    }
+    if (!text) return;
+    const all = { startIndex: start, endIndex: start + text.length };
+    const requests: docs_v1.Schema$Request[] = [
+      { insertText: { location: { index: start }, text } },
+      // Inserted text inherits the style around it (e.g. a previous link); reset it first.
+      {
+        updateParagraphStyle: {
+          range: all,
+          paragraphStyle: { namedStyleType: 'NORMAL_TEXT' },
+          fields: 'namedStyleType',
+        },
+      },
+      { updateTextStyle: { range: all, textStyle: {}, fields: 'bold,link' } },
+      ...paragraphs.map((p) => ({
+        updateParagraphStyle: {
+          range: { startIndex: p.start, endIndex: p.end },
+          paragraphStyle: { namedStyleType: p.style },
+          fields: 'namedStyleType',
+        },
+      })),
+      ...bold.map((b) => ({
+        updateTextStyle: {
+          range: { startIndex: b.start, endIndex: b.end },
+          textStyle: { bold: true },
+          fields: 'bold',
+        },
+      })),
+      ...links.map((l) => ({
+        updateTextStyle: {
+          range: { startIndex: l.start, endIndex: l.end },
+          textStyle: { link: { url: l.url } },
+          fields: 'link',
+        },
+      })),
+    ];
+    await this.call(() =>
+      this.docs.documents.batchUpdate({ documentId, requestBody: { requests } }),
+    );
+  }
+
+  async savePdf(documentId: string, target: { name: string; folderId: string; fileId?: string }) {
+    const { data: pdf } = await this.call(() =>
+      this.drive.files.export(
+        { fileId: documentId, mimeType: MIME.pdf },
+        { responseType: 'arraybuffer' },
+      ),
+    );
+    const media = () => ({
+      mimeType: MIME.pdf,
+      body: Readable.from([Buffer.from(pdf as ArrayBuffer)]),
+    });
+    if (target.fileId) {
+      try {
+        const { data } = await this.call(() =>
+          this.drive.files.update({
+            fileId: target.fileId,
+            media: media(),
+            fields: 'id,webViewLink',
+          }),
+        );
+        return { id: data.id ?? '', url: data.webViewLink ?? '' };
+      } catch (err) {
+        if (!isNotFound(err)) throw err; // deleted by the user: write a new one
+      }
+    }
+    const { data } = await this.call(() =>
+      this.drive.files.create({
+        requestBody: { name: target.name, mimeType: MIME.pdf, parents: [target.folderId] },
+        media: media(),
+        fields: 'id,webViewLink',
+      }),
+    );
+    return { id: data.id ?? '', url: data.webViewLink ?? '' };
+  }
+}
+
 export interface GoogleGatewayOptions {
   retry?: RetryOptions;
   /**
@@ -339,5 +611,10 @@ export class GoogleGatewayProvider implements GatewayProvider {
   async tasks(accountId: string): Promise<TasksGateway> {
     const call = caller(this.auth, accountId, this.options.retry);
     return new GoogleTasksGateway(await call(() => this.auth.getClient(accountId)), call);
+  }
+
+  async documents(accountId: string): Promise<DocumentsGateway> {
+    const call = caller(this.auth, accountId, this.options.retry);
+    return new GoogleDocumentsGateway(await call(() => this.auth.getClient(accountId)), call);
   }
 }

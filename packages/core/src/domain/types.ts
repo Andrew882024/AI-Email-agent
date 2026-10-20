@@ -242,7 +242,7 @@ export interface ChatFile {
   createdAt: Date;
 }
 
-export type WorkflowType = 'label' | 'todo' | 'archive' | 'star_read';
+export type WorkflowType = 'label' | 'todo' | 'archive' | 'star_read' | 'document';
 export type WorkflowMode = 'persistent' | 'one_shot';
 export type WorkflowStatus =
   'previewing' | 'awaiting_approval' | 'active' | 'paused' | 'completed' | 'failed';
@@ -256,6 +256,28 @@ export interface WorkflowAction {
   /** star_read */
   star?: boolean;
   markRead?: boolean;
+  /** document: where matching emails are recorded, one row/section each. */
+  document?: DocumentAction;
+}
+
+export type DocumentFormat = 'sheet' | 'doc' | 'pdf';
+
+export interface DocumentField {
+  name: string;
+  /** What to extract, for the model (e.g. "pickup deadline as YYYY-MM-DD"). */
+  description: string;
+}
+
+export interface DocumentAction {
+  format: DocumentFormat;
+  title: string;
+  fields: DocumentField[];
+  /** Set once the document exists (on apply). For pdf, the Google Doc the PDF is exported from. */
+  folderId?: string;
+  documentId?: string;
+  url?: string;
+  pdfFileId?: string;
+  pdfUrl?: string;
 }
 
 export interface Workflow {
@@ -293,6 +315,8 @@ export interface WorkflowDecision {
   /** pending = matched, waiting for approval; skipped = not a match (or below the threshold). */
   status: DecisionStatus;
   error?: string;
+  /** document workflows: the values extracted from the email, by field name. */
+  output?: Record<string, string>;
   decidedAt: Date;
   appliedAt?: Date;
 }

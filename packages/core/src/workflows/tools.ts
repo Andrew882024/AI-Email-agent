@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { Repositories } from '../db/repositories.js';
 import { defineTool, type ToolContext } from '../tools/registry.js';
-import type { WorkflowEngine } from './engine.js';
+import { DOCUMENT_NAMES, type WorkflowEngine } from './engine.js';
 
 const workflowId = z.string().min(1);
 
@@ -17,12 +17,14 @@ export function createWorkflowTools(engine: WorkflowEngine, repos: Repositories)
         'Create an email automation and run it once as a PREVIEW (nothing changes yet): candidates are found by ' +
         'meaning + keywords and the model decides each one. mode "persistent" keeps handling new mail after approval; ' +
         '"one_shot" is a one-time cleanup. Types: label (action.labelName), todo (optional action.todoTitle), archive, ' +
-        'star_read (action.star and/or action.markRead). Show the user the criteria before creating, and the preview ' +
-        'after; then call apply_workflow.',
+        'star_read (action.star and/or action.markRead), document (action.document: record each matching email as a ' +
+        'row of a Google Sheet, or a section of a Google Doc or PDF, with the fields the model extracts from it; ' +
+        'created in the "AI Email Agent" Drive folder on approval). Show the user the criteria (and fields) before ' +
+        'creating, and the preview after; then call apply_workflow.',
       sideEffect: 'write',
       input: z.object({
         name: z.string().trim().min(1).max(100).describe('Short name, e.g. "Invoices → Bills"'),
-        type: z.enum(['label', 'todo', 'archive', 'star_read']),
+        type: z.enum(['label', 'todo', 'archive', 'star_read', 'document']),
         mode: z.enum(['persistent', 'one_shot']).default('persistent'),
         instruction: z.string().min(1).describe("The user's request, in their words"),
         criteria: z
@@ -47,6 +49,34 @@ export function createWorkflowTools(engine: WorkflowEngine, repos: Repositories)
             todoTitle: z.string().optional(),
             star: z.boolean().optional(),
             markRead: z.boolean().optional(),
+            document: z
+              .object({
+                format: z
+                  .enum(['sheet', 'doc', 'pdf'])
+                  .describe(
+                    'sheet = Google Sheets table (for "Excel"), doc = Google Docs, pdf = PDF in Drive',
+                  ),
+                title: z.string().trim().min(1).max(200),
+                fields: z
+                  .array(
+                    z.object({
+                      name: z.string().trim().min(1).max(60).describe('Column / field name'),
+                      description: z
+                        .string()
+                        .min(1)
+                        .max(300)
+                        .describe(
+                          'What to extract, with the format (e.g. "pickup deadline, YYYY-MM-DD")',
+                        ),
+                    }),
+                  )
+                  .min(1)
+                  .max(20)
+                  .describe(
+                    'Received date, subject, sender and a Gmail link are added automatically',
+                  ),
+              })
+              .optional(),
           })
           .default({}),
       }),
@@ -67,14 +97,24 @@ export function createWorkflowTools(engine: WorkflowEngine, repos: Repositories)
         const workflow = await engine.own(ctx.accountId, i.workflowId);
         const pending = (await repos.workflows.counts(workflow.id)).pending ?? 0;
         const future = workflow.mode === 'persistent' ? ', and keep doing it for new mail' : '';
-        return `apply workflow "${workflow.name}" to ${pending} emails${future}`;
+        const doc = workflow.action.document;
+        const created =
+          doc && !doc.documentId
+            ? ` (creates the ${DOCUMENT_NAMES[doc.format]} "${doc.title}" in your Google Drive)`
+            : '';
+        return `apply workflow "${workflow.name}" to ${pending} emails${created}${future}`;
       },
       input: z.object({ workflowId }),
       targets: (i) => [i.workflowId],
       handler: async (ctx, i) => {
         const result = await engine.apply(ctx.accountId, i.workflowId);
         const workflow = await engine.own(ctx.accountId, i.workflowId);
-        return { ...result, status: workflow.status };
+        const doc = workflow.action.document;
+        return {
+          ...result,
+          status: workflow.status,
+          ...(doc && { documentUrl: doc.pdfUrl ?? doc.url }),
+        };
       },
     }),
     defineTool({
@@ -163,7 +203,8 @@ export function createWorkflowTools(engine: WorkflowEngine, repos: Repositories)
     defineTool({
       name: 'undo_workflow_decision',
       description:
-        'Reverse what a workflow did to one email (remove the label, move back to inbox, ...).',
+        'Reverse what a workflow did to one email (remove the label, move back to inbox, delete its Sheet row, ...). ' +
+        'Entries in a Google Doc or PDF cannot be undone.',
       sideEffect: 'write',
       input: z.object({ workflowId, messageId: z.string().min(1) }),
       targets: (i) => [i.messageId],

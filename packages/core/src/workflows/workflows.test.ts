@@ -19,10 +19,27 @@ import { MailboxService } from '../sync/mailbox.js';
 import { OutboxWorker } from '../sync/outbox-worker.js';
 import { createEmailTools } from '../tools/email-tools.js';
 import { ToolRegistry } from '../tools/registry.js';
+import { DRIVE_FOLDER, GoogleDriveDocumentSink } from './documents.js';
 import { type WorkflowSpec, WorkflowEngine } from './engine.js';
 import { createWorkflowTools } from './tools.js';
 
 const days = (n: number) => new Date(Date.now() - n * 86_400_000);
+
+/** Extraction stand-in: fills f1, f2, ... of each "### Email <id>" block with `fill(text)`. */
+function extractor(fill: (text: string) => string[]) {
+  return (request: GenerateRequest) => {
+    const text = (request.messages[0]!.parts[0] as { text: string }).text;
+    return JSON.stringify({
+      rows: text
+        .split('### Email ')
+        .slice(1)
+        .map((block) => ({
+          messageId: block.slice(0, block.indexOf('\n')),
+          values: Object.fromEntries(fill(block).map((v, i) => [`f${i + 1}`, v])),
+        })),
+    });
+  };
+}
 
 /** Classifier stand-in: decides each "### Email <id>" block with `decide(text)`. */
 function classifier(decide: (text: string) => { match: boolean; confidence: number }) {
@@ -156,7 +173,14 @@ describe.skipIf(!testDatabaseUrl)('workflows', () => {
       /amount due/i.test(text) && /invoice/i.test(text)
         ? { match: true, confidence: 0.9 }
         : { match: false, confidence: 0.1 };
-    llm = new ScriptedLLM((request) => classifier(decide)(request));
+    llm = new ScriptedLLM((request) =>
+      request.system?.startsWith('You fill in a document')
+        ? extractor((text) => [
+            /amount due:? (\d+)/i.exec(text)?.[1] ?? '',
+            /invoice #?(\d+)/i.exec(text)?.[1] ?? '',
+          ])(request)
+        : classifier(decide)(request),
+    );
     tools = new ToolRegistry(actions).register(
       ...createEmailTools({
         repos,
@@ -166,7 +190,16 @@ describe.skipIf(!testDatabaseUrl)('workflows', () => {
         search: new HybridSearch({ repos, embeddings }),
       }),
     );
-    engine = new WorkflowEngine({ repos, llm, embeddings, tools, events, logger });
+    engine = new WorkflowEngine({
+      repos,
+      llm,
+      embeddings,
+      tools,
+      events,
+      logger,
+      actions,
+      documents: new GoogleDriveDocumentSink(google),
+    });
     tools.register(...createWorkflowTools(engine, repos));
   });
 
@@ -417,5 +450,202 @@ describe.skipIf(!testDatabaseUrl)('workflows', () => {
       { workflowId: preview.workflowId },
     );
     expect(await repos.workflows.list(accountId)).toEqual([]);
+  });
+
+  describe('document workflows', () => {
+    const drive = () => google.fakeDocuments;
+    const invoiceTable = (
+      format: 'sheet' | 'doc' | 'pdf',
+      over: Partial<WorkflowSpec> = {},
+    ): WorkflowSpec =>
+      invoiceRule({
+        name: 'Invoice table',
+        type: 'document',
+        action: {
+          document: {
+            format,
+            title: 'Invoices',
+            fields: [
+              { name: 'Amount', description: 'amount due, number only' },
+              { name: 'Invoice #', description: 'invoice number' },
+            ],
+          },
+        },
+        ...over,
+      });
+
+    it('previews extracted rows, creates the Sheet on approval, appends new mail and undoes rows', async () => {
+      const preview = await engine.create(accountId, invoiceTable('sheet'));
+      expect(preview.document).toEqual({
+        format: 'sheet',
+        title: 'Invoices',
+        columns: ['Received', 'Amount', 'Invoice #', 'Subject', 'From', 'Email'],
+      });
+      expect(preview.examples.find((e) => e.messageId === 'inv1')?.values).toEqual({
+        Amount: '40',
+        'Invoice #': '100',
+      });
+      expect(drive().files.size).toBe(0); // nothing created before approval
+      expect(
+        await tools.approvalText(
+          'apply_workflow',
+          { accountId, actor: 'user' },
+          { workflowId: preview.workflowId },
+        ),
+      ).toBe(
+        'apply workflow "Invoice table" to 4 emails (creates the Google Sheet "Invoices" in your Google Drive), and keep doing it for new mail',
+      );
+
+      const applied = (await tools.invoke(
+        'apply_workflow',
+        { accountId, actor: 'user' },
+        { workflowId: preview.workflowId },
+      )) as { applied: number; documentUrl: string };
+      expect(applied.applied).toBe(4);
+      const [folder] = drive().of('folder');
+      const [sheet] = drive().of('spreadsheet');
+      expect(folder?.name).toBe(DRIVE_FOLDER);
+      expect(sheet).toMatchObject({ name: 'Invoices', parent: folder!.id, headerFormatted: true });
+      expect(applied.documentUrl).toContain(sheet!.id);
+      expect(sheet!.rows[0]).toEqual([
+        'Received',
+        'Amount',
+        'Invoice #',
+        'Subject',
+        'From',
+        'Email',
+      ]);
+      // Oldest first; links identify the email in the right account.
+      expect(sheet!.rows.slice(1).map((r) => r[3])).toEqual([
+        'Old invoice',
+        'Your invoice is ready',
+        'Invoice archived',
+        'Invoice #100',
+      ]);
+      expect(sheet!.rows.at(-1)).toEqual([
+        expect.stringMatching(/^\d{4}-\d\d-\d\d \d\d:\d\d$/),
+        '40',
+        '100',
+        'Invoice #100',
+        'Acme Billing <billing@acme.com>',
+        'https://mail.google.com/mail/?authuser=me%40example.com#all/inv1',
+      ]);
+      const workflow = await repos.workflows.get(preview.workflowId);
+      expect(workflow?.action.document).toMatchObject({
+        documentId: sheet!.id,
+        folderId: folder!.id,
+      });
+      const logs = (await repos.actionLogs.query({ limit: 50 })).items.filter((l) =>
+        ['create_document', 'append_to_document'].includes(l.action),
+      );
+      expect(logs.map((l) => [l.action, l.actor, l.status]).sort()).toEqual([
+        ['append_to_document', `workflow:${preview.workflowId}`, 'success'],
+        ['create_document', `workflow:${preview.workflowId}`, 'success'],
+      ]);
+
+      google.fakeGmail.add({ id: 'new1', subject: 'Invoice #300', body: 'Amount due 99' });
+      google.fakeGmail.add({ id: 'new2', subject: 'Party', body: 'Saturday?' });
+      await mailSync.sync(accountId);
+      await engine.handleNewMail(accountId, ['new1', 'new2']);
+      expect(drive().of('spreadsheet')).toHaveLength(1); // same sheet
+      expect(sheet!.rows).toHaveLength(6);
+      expect(sheet!.rows.at(-1)!.slice(1, 4)).toEqual(['99', '300', 'Invoice #300']);
+
+      await engine.undo(accountId, preview.workflowId, 'inv2');
+      expect(sheet!.rows.map((r) => r[3])).not.toContain('Your invoice is ready');
+      expect(sheet!.rows).toHaveLength(5);
+      expect(await repos.workflows.getDecision(preview.workflowId, 'inv2')).toMatchObject({
+        status: 'undone',
+        output: { Amount: '12', 'Invoice #': '200' },
+      });
+    });
+
+    it('keeps a PDF exported from a Google Doc up to date in the same file', async () => {
+      const preview = await engine.create(accountId, invoiceTable('pdf'));
+      await engine.apply(accountId, preview.workflowId);
+      const [source] = drive().of('document');
+      const [pdf] = drive().of('pdf');
+      expect(source).toMatchObject({ name: 'Invoices (PDF source)', title: 'Invoices' });
+      expect(source!.sections.map((x) => x.heading)).toEqual([
+        'Old invoice',
+        'Your invoice is ready',
+        'Invoice archived',
+        'Invoice #100',
+      ]);
+      expect(source!.sections[3]).toMatchObject({
+        fields: expect.arrayContaining([{ label: 'Amount', value: '40' }]),
+        link: { text: 'Open in Gmail', url: expect.stringContaining('#all/inv1') },
+      });
+      expect(pdf).toMatchObject({ name: 'Invoices.pdf', writes: 2 });
+      expect(pdf!.content).toContain('Invoice #: 100');
+
+      google.fakeGmail.add({ id: 'new1', subject: 'Invoice #300', body: 'Amount due 99' });
+      await mailSync.sync(accountId);
+      await engine.handleNewMail(accountId, ['new1']);
+      expect(drive().of('pdf')).toHaveLength(1);
+      expect(pdf).toMatchObject({ writes: 3, content: expect.stringContaining('Amount: 99') });
+
+      // The user deleted the PDF: the next update writes a new one and remembers it.
+      drive().files.delete(pdf!.id);
+      google.fakeGmail.add({ id: 'new2', subject: 'Invoice #400', body: 'Amount due 5' });
+      await mailSync.sync(accountId);
+      await engine.handleNewMail(accountId, ['new2']);
+      const [replaced] = drive().of('pdf');
+      expect((await repos.workflows.get(preview.workflowId))?.action.document).toMatchObject({
+        pdfFileId: replaced!.id,
+        pdfUrl: expect.stringContaining(replaced!.id),
+      });
+
+      await expect(engine.undo(accountId, preview.workflowId, 'inv1')).rejects.toThrow(
+        "can't be removed from a PDF",
+      );
+    });
+
+    it('writes Google Docs, records failures, and validates document specs', async () => {
+      drive().failures.appendSections = [new Error('Docs API has not been used in project')];
+      const preview = await engine.create(accountId, invoiceTable('doc', { mode: 'one_shot' }));
+      expect(await engine.apply(accountId, preview.workflowId)).toEqual({ applied: 0, failed: 4 });
+      expect(await repos.workflows.getDecision(preview.workflowId, 'inv1')).toMatchObject({
+        status: 'failed',
+        error: expect.stringContaining('Docs API'),
+      });
+
+      const second = await engine.create(accountId, invoiceTable('doc', { name: 'Again' }));
+      await engine.apply(accountId, second.workflowId);
+      const docs = drive().of('document');
+      expect(docs.at(-1)!.sections).toHaveLength(4);
+
+      await expect(
+        engine.create(
+          accountId,
+          invoiceRule({
+            type: 'document',
+            action: { document: { format: 'sheet', title: 'X', fields: [] } },
+          }),
+        ),
+      ).rejects.toThrow('fields');
+      await expect(
+        engine.create(
+          accountId,
+          invoiceRule({
+            type: 'document',
+            action: {
+              document: {
+                format: 'sheet',
+                title: 'X',
+                fields: [
+                  { name: 'A', description: 'a' },
+                  { name: 'a', description: 'b' },
+                ],
+              },
+            },
+          }),
+        ),
+      ).rejects.toThrow('distinct');
+      const without = new WorkflowEngine({ repos, llm, embeddings, tools, events, logger });
+      await expect(without.create(accountId, invoiceTable('sheet'))).rejects.toThrow(
+        'not available',
+      );
+    });
   });
 });
