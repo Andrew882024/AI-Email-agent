@@ -8,7 +8,7 @@ import { startLoopbackReceiver } from './loopback.js';
 import { GOOGLE_SCOPES, REQUIRED_API_SCOPES } from './scopes.js';
 import type { TokenStore } from './token-store.js';
 
-/** Opens a URL in the user's browser. Injected by the host (Electron shell, dev CLI, ...). */
+/** Opens a URL in the user's browser. Injected so tests can capture it. */
 export type OpenExternal = (url: string) => Promise<void>;
 
 /** Everything the rest of the app needs from Google sign-in. */

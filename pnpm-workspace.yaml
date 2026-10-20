@@ -6,10 +6,7 @@ packages:
 # optional platform package, so its postinstall check isn't needed.
 allowBuilds:
   esbuild: false
-  # Downloads the Electron binary for this platform (official GitHub release).
-  electron: true
-  # Windows installer tooling from electron-builder; we only build for macOS.
-  electron-winstaller: false
   # Gemini SDK: a no-op preinstall, and protobufjs's postinstall only checks its CLI tooling.
   '@google/genai': false
   protobufjs: false
+  electron: set this to true or false

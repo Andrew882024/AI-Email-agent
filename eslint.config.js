@@ -7,14 +7,7 @@ import tseslint from 'typescript-eslint';
 
 export default defineConfig(
   {
-    ignores: [
-      '**/dist/**',
-      '**/node_modules/**',
-      '**/coverage/**',
-      // desktop build outputs (copied web bundle, packaged app)
-      'apps/desktop/web/**',
-      'apps/desktop/release/**',
-    ],
+    ignores: ['**/dist/**', '**/node_modules/**', '**/coverage/**'],
   },
   js.configs.recommended,
   tseslint.configs.recommended,

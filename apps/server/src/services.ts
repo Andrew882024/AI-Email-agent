@@ -29,20 +29,12 @@ import {
   GoogleOAuthService,
   MailboxService,
   MailSync,
-  type OpenExternal,
+  openInSystemBrowser,
   OutboxWorker,
-  type SecretCipher,
   SyncScheduler,
   TasksSync,
   ToolRegistry,
 } from '@ai-email/core';
-
-/** Platform capabilities supplied by whoever hosts the server (Electron, or a plain Node process). */
-export interface HostCapabilities {
-  openExternal: OpenExternal;
-  /** Encrypts stored tokens; defaults to AES-GCM keyed by APP_SECRET_KEY. Electron passes safeStorage. */
-  cipher?: SecretCipher;
-}
 
 export interface Services {
   config: AppConfig;
@@ -63,16 +55,12 @@ export interface Services {
   close(): Promise<void>;
 }
 
-export function createServices(config: AppConfig, host: HostCapabilities): Services {
-  const cipher =
-    host.cipher ??
-    (config.appSecretKey
-      ? new AesGcmSecretCipher(config.appSecretKey)
-      : (() => {
-          throw new ConfigError(
-            'APP_SECRET_KEY is required to store Google tokens outside Electron (`openssl rand -base64 32`).',
-          );
-        })());
+export function createServices(config: AppConfig): Services {
+  if (!config.appSecretKey)
+    throw new ConfigError(
+      'APP_SECRET_KEY is required to store Google tokens (`openssl rand -base64 32`).',
+    );
+  const cipher = new AesGcmSecretCipher(config.appSecretKey);
   const logger = createSystemLogger({
     level: config.logLevel,
     logDir: join(config.dataDir, 'logs'),
@@ -86,7 +74,7 @@ export function createServices(config: AppConfig, host: HostCapabilities): Servi
     clientSecret: config.google.clientSecret,
     accounts: repos.accounts,
     tokens: new EncryptedTokenStore(repos.oauthTokens, cipher),
-    openExternal: host.openExternal,
+    openExternal: openInSystemBrowser,
     logger,
   });
   const gateways = new GoogleGatewayProvider(auth, {

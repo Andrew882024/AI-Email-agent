@@ -1,5 +1,4 @@
 import cors from '@fastify/cors';
-import fastifyStatic from '@fastify/static';
 import {
   type Account,
   type AgentEvent,
@@ -45,8 +44,6 @@ export interface ServerOptions {
   allowedOrigins: string[];
   /** SSE keep-alive interval. */
   heartbeatMs?: number;
-  /** Directory of the built web app to serve at / (the desktop app loads it from here). */
-  webRoot?: string;
 }
 
 class HttpError extends Error {
@@ -499,18 +496,6 @@ export async function buildServer(
       throw new HttpError(404, 'not_found', 'Memory not found');
     return { ok: true };
   });
-
-  // ---------- web app ----------
-  if (options.webRoot) {
-    await app.register(fastifyStatic, { root: options.webRoot, wildcard: false });
-    // Client-side routes fall back to index.html; unknown API paths stay JSON 404s.
-    app.setNotFoundHandler((req, reply) => {
-      if (req.method === 'GET' && !req.url.startsWith('/api/')) return reply.sendFile('index.html');
-      return reply
-        .code(404)
-        .send({ error: { code: 'not_found', message: `No route ${req.method} ${req.url}` } });
-    });
-  }
 
   // ---------- server-sent events ----------
   app.get('/api/events', (req: FastifyRequest, reply: FastifyReply) => {

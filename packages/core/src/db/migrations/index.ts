@@ -7,7 +7,7 @@ import { downMigration as down0005, upMigration as up0005 } from './0005_workflo
 import { downMigration as down0006, upMigration as up0006 } from './0006_document_workflows.js';
 
 // Registered explicitly (not read from disk) so migrations work the same from src, dist and a
-// packaged Electron app. Names sort lexically; never rename or reorder an applied migration.
+// bundled build. Names sort lexically; never rename or reorder an applied migration.
 export const migrations: Record<string, Migration> = {
   '0001_init': { up: up0001, down: down0001 },
   '0002_sync': { up: up0002, down: down0002 },

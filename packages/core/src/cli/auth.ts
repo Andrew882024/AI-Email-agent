@@ -16,7 +16,7 @@ if (!['login', 'status', 'logout'].includes(command)) {
 const config = loadConfig();
 if (!config.appSecretKey) {
   console.error(
-    '✗ APP_SECRET_KEY is required to store Google tokens outside Electron.\n' +
+    '✗ APP_SECRET_KEY is required to store Google tokens.\n' +
       '  Generate one with `openssl rand -base64 32` and add it to .env.',
   );
   process.exit(1);

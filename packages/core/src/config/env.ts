@@ -44,7 +44,7 @@ export interface AppConfig {
   databaseUrl: string;
   serverPort: number;
   allowedOrigins: string[];
-  /** Root for local app files (logs, uploads). Electron overrides this with its userData path. */
+  /** Root for local app files (logs, uploads). */
   dataDir: string;
   google: { clientId: string; clientSecret: string };
   sync: { windowDays: number; pollSeconds: number; gmailQuotaPerMinute: number };

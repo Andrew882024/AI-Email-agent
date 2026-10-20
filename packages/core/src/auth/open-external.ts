@@ -1,7 +1,7 @@
 import open from 'open';
 import type { OpenExternal } from './google-auth.js';
 
-/** Default OpenExternal outside Electron (dev server, CLI). */
+/** OpenExternal for the server and CLI: the system's default browser. */
 export const openInSystemBrowser: OpenExternal = async (url) => {
   await open(url);
 };

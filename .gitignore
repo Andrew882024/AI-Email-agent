@@ -6,6 +6,3 @@ coverage/
 !.env.example
 *.log
 .DS_Store
-# desktop build outputs
-apps/desktop/web/
-apps/desktop/release/

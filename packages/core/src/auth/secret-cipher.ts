@@ -1,8 +1,7 @@
 import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from 'node:crypto';
 
 /**
- * Encrypts secrets at rest. Async so implementations can use an OS keychain
- * (Electron's safeStorage is injected by the desktop shell).
+ * Encrypts secrets at rest. Async so an implementation can use an OS keychain.
  */
 export interface SecretCipher {
   encrypt(plaintext: string): Promise<string>;
@@ -12,7 +11,7 @@ export interface SecretCipher {
 const FORMAT = 'v1';
 const SALT = 'ai-email-agent/secret-cipher/v1';
 
-/** AES-256-GCM with a key derived from APP_SECRET_KEY. Used outside Electron. */
+/** AES-256-GCM with a key derived from APP_SECRET_KEY. */
 export class AesGcmSecretCipher implements SecretCipher {
   private readonly key: Buffer;
 
