@@ -109,6 +109,8 @@ export async function buildServer(
   const app = Fastify({
     loggerInstance: deps.logger as FastifyBaseLogger,
     disableRequestLogging: true,
+    // Tool calls may carry base64 attachments (send_email allows 18 MB of files).
+    bodyLimit: 32 * 1024 * 1024,
   });
   app.removeContentTypeParser('text/plain');
 
@@ -224,6 +226,17 @@ export async function buildServer(
     const q = listQuery.parse(req.query);
     const input = { view: q.view, label: q.label, limit: q.limit, cursor: q.cursor };
     return q.q ? invoke('search_emails', { ...input, query: q.q }) : invoke('list_emails', input);
+  });
+
+  app.get('/api/threads', async (req) => {
+    const q = listQuery.parse(req.query);
+    return invoke('list_threads', {
+      view: q.view,
+      label: q.label,
+      query: q.q,
+      limit: q.limit,
+      cursor: q.cursor,
+    });
   });
 
   app.get<{ Params: { id: string } }>('/api/messages/:id', async (req) =>

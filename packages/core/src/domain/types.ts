@@ -82,6 +82,31 @@ export interface Message extends MessageSummary {
   attachments: Attachment[];
 }
 
+/** A conversation as shown in a mail list: aggregated over all of its messages. */
+export interface ThreadSummary {
+  threadId: string;
+  /** Subject of the first message. */
+  subject: string;
+  /** Snippet of the newest message. */
+  snippet: string;
+  /** Date of the newest message matching the list's filter (what the list is sorted by). */
+  lastMessageAt: Date;
+  messageCount: number;
+  /** Senders in order of first appearance, deduplicated. */
+  participants: EmailAddress[];
+  /** Union of the messages' labels. */
+  labelIds: string[];
+  /** Every message is read. */
+  isRead: boolean;
+  /** Any message is starred. */
+  isStarred: boolean;
+  /** Any message is in the inbox. */
+  inInbox: boolean;
+  hasAttachments: boolean;
+  /** Oldest first; bulk actions on a thread apply to all of them. */
+  messageIds: string[];
+}
+
 /** What sync writes. Flags (isRead, ...) are derived from labelIds, never stored separately. */
 export type MessageUpsert = Omit<Message, 'isRead' | 'isStarred' | 'inInbox'>;
 

@@ -13,6 +13,7 @@ import type {
   Page,
   FullSyncCheckpoint,
   SyncState,
+  ThreadSummary,
   Todo,
   TodoStatus,
 } from '../domain/types.js';
@@ -82,6 +83,11 @@ export interface MessageRepository {
   getThread(accountId: string, threadId: string): Promise<Message[]>;
   /** Newest first. */
   list(accountId: string, query: MessageListQuery): Promise<Page<MessageSummary>>;
+  /**
+   * Conversations with at least one message matching the query, newest (matching) first. Each
+   * summary aggregates the whole conversation.
+   */
+  listThreads(accountId: string, query: MessageListQuery): Promise<Page<ThreadSummary>>;
   /** Same semantics as Gmail batchModify. Unknown message ids are ignored. */
   modifyLabels(
     accountId: string,

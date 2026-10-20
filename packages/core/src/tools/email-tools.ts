@@ -235,6 +235,25 @@ export function createEmailTools(deps: EmailToolDeps) {
         }),
     }),
     defineTool({
+      name: 'list_threads',
+      description:
+        'List conversations in a mailbox view (newest first), optionally filtered by a keyword query. ' +
+        'Each item summarizes the whole conversation and includes its messageIds.',
+      sideEffect: 'read',
+      input: z.object({
+        view: view.default('inbox'),
+        query: z.string().optional().describe('Keyword search, as in search_emails'),
+        ...listing,
+      }),
+      handler: async (ctx, i) =>
+        repos.messages.listThreads(ctx.accountId, {
+          ...(await listQuery(ctx, i.view, i.label)),
+          search: i.query,
+          limit: i.limit,
+          cursor: i.cursor,
+        }),
+    }),
+    defineTool({
       name: 'search_emails',
       description:
         'Keyword search over subject, sender and body (supports "quoted phrases", OR and -exclusion). Newest first.',

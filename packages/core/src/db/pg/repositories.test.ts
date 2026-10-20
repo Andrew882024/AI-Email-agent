@@ -228,6 +228,66 @@ describe.skipIf(!testDatabaseUrl)('Postgres repositories', () => {
       expect(read.items.map((m) => m.id)).toEqual(['m3', 'm1']);
     });
 
+    it('lists conversations: a thread matches if any message does, and summarizes all of them', async () => {
+      await repos.messages.upsertMany(accountId, [
+        message('a1', { threadId: 'A', internalDate: at(1), subject: 'Trip', labelIds: ['INBOX'] }),
+        message('a2', {
+          threadId: 'A',
+          internalDate: at(5),
+          subject: 'Re: Trip',
+          from: { name: 'Bob', email: 'bob@example.com' },
+          labelIds: ['INBOX', 'UNREAD'],
+          hasAttachments: true,
+        }),
+        message('a3', {
+          threadId: 'A',
+          internalDate: at(6),
+          from: { email: 'me@example.com' },
+          labelIds: ['SENT'],
+        }),
+        message('b1', { threadId: 'B', internalDate: at(3), labelIds: ['INBOX', 'STARRED'] }),
+        message('c1', { threadId: 'C', internalDate: at(4), labelIds: ['Label_1'] }),
+      ]);
+
+      const inbox = await repos.messages.listThreads(accountId, { labelIds: ['INBOX'], limit: 10 });
+      // Sorted by the newest *matching* message: A's sent reply (no INBOX) doesn't count.
+      expect(inbox.items.map((t) => t.threadId)).toEqual(['A', 'B']);
+      expect(inbox.items[0]).toEqual({
+        threadId: 'A',
+        subject: 'Trip',
+        snippet: 'snippet a3',
+        lastMessageAt: at(5),
+        messageCount: 3,
+        participants: [
+          { name: 'Alice', email: 'alice@example.com' },
+          { name: 'Bob', email: 'bob@example.com' },
+          { email: 'me@example.com' },
+        ],
+        labelIds: ['INBOX', 'SENT', 'UNREAD'],
+        isRead: false,
+        isStarred: false,
+        inInbox: true,
+        hasAttachments: true,
+        messageIds: ['a1', 'a2', 'a3'],
+      });
+
+      const first = await repos.messages.listThreads(accountId, { limit: 2 });
+      expect(first.items.map((t) => t.threadId)).toEqual(['A', 'C']);
+      const second = await repos.messages.listThreads(accountId, {
+        limit: 2,
+        cursor: first.nextCursor,
+      });
+      expect(second.items.map((t) => t.threadId)).toEqual(['B']);
+      expect(second.nextCursor).toBeUndefined();
+
+      const ids = async (query: { search?: string; excludeLabelIds?: string[] }) =>
+        (await repos.messages.listThreads(accountId, { ...query, limit: 5 })).items.map(
+          (t) => t.threadId,
+        );
+      expect(await ids({ search: 'Re: Trip' })).toEqual(['A']);
+      expect(await ids({ excludeLabelIds: ['INBOX', 'SENT'] })).toEqual(['C']);
+    });
+
     it('breaks date ties by id so paging never skips or repeats', async () => {
       const same = new Date('2026-03-01T00:00:00Z');
       await repos.messages.upsertMany(

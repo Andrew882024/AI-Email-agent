@@ -1,10 +1,18 @@
-import { type ExpressionBuilder, type Selectable, sql } from 'kysely';
+import {
+  type Expression,
+  type ExpressionBuilder,
+  type Selectable,
+  type SqlBool,
+  sql,
+} from 'kysely';
 import {
   type Attachment,
+  type EmailAddress,
   type Message,
   type MessageSummary,
   type MessageUpsert,
   SystemLabel,
+  type ThreadSummary,
 } from '../../domain/types.js';
 import type { Db } from '../connection.js';
 import type { LabelCounts, MessageListQuery, MessageRepository } from '../repositories.js';
@@ -116,6 +124,35 @@ function toMessage(row: FullRow, attachments: Attachment[]): Message {
   };
 }
 
+function toThreadSummary(
+  threadId: string,
+  lastAt: Date,
+  messages: MessageSummary[],
+): ThreadSummary {
+  const first = messages[0];
+  const newest = messages.at(-1);
+  const participants = new Map<string, EmailAddress>();
+  for (const m of messages) {
+    if (m.from && !participants.has(m.from.email.toLowerCase())) {
+      participants.set(m.from.email.toLowerCase(), m.from);
+    }
+  }
+  return {
+    threadId,
+    subject: first?.subject ?? '',
+    snippet: newest?.snippet ?? '',
+    lastMessageAt: lastAt,
+    messageCount: messages.length,
+    participants: [...participants.values()],
+    labelIds: [...new Set(messages.flatMap((m) => m.labelIds))].sort(),
+    isRead: messages.every((m) => m.isRead),
+    isStarred: messages.some((m) => m.isStarred),
+    inInbox: messages.some((m) => m.inInbox),
+    hasAttachments: messages.some((m) => m.hasAttachments),
+    messageIds: messages.map((m) => m.id),
+  };
+}
+
 /** `message m has label <labelIds>` as a correlated EXISTS. */
 function hasLabel(eb: ExpressionBuilder<Database & { m: MessagesTable }, 'm'>, ids: string[]) {
   return eb.exists(
@@ -126,6 +163,31 @@ function hasLabel(eb: ExpressionBuilder<Database & { m: MessagesTable }, 'm'>, i
       .whereRef('ml.message_id', '=', 'm.id')
       .where('ml.label_id', 'in', ids),
   );
+}
+
+/** Label include/exclude and keyword conditions on message `m`. */
+function messageFilter(
+  eb: ExpressionBuilder<Database & { m: MessagesTable }, 'm'>,
+  query: MessageListQuery,
+): Expression<SqlBool> {
+  const conditions: Expression<SqlBool>[] = [];
+  for (const labelId of new Set(query.labelIds)) conditions.push(hasLabel(eb, [labelId]));
+  const excluded = query.excludeLabelIds ?? [];
+  if (excluded.length > 0) conditions.push(eb.not(hasLabel(eb, excluded)));
+  const search = query.search?.trim();
+  if (search) {
+    const pattern = `%${escapeLike(search)}%`;
+    conditions.push(
+      eb.or([
+        sql<boolean>`m.fts @@ websearch_to_tsquery('simple', ${search})`,
+        // ILIKE fallback: the 'simple' parser does not segment CJK text.
+        eb('m.subject', 'ilike', pattern),
+        sql<boolean>`m.from_addr ->> 'email' ilike ${pattern}`,
+        sql<boolean>`m.from_addr ->> 'name' ilike ${pattern}`,
+      ]),
+    );
+  }
+  return conditions.length > 0 ? eb.and(conditions) : sql<boolean>`true`;
 }
 
 export class PgMessageRepository implements MessageRepository {
@@ -286,25 +348,8 @@ export class PgMessageRepository implements MessageRepository {
     let q = this.db
       .selectFrom('messages as m')
       .select([...SUMMARY_COLUMNS, labelIds])
-      .where('m.account_id', '=', accountId);
-
-    for (const labelId of new Set(query.labelIds)) q = q.where((eb) => hasLabel(eb, [labelId]));
-    const excluded = query.excludeLabelIds ?? [];
-    if (excluded.length > 0) q = q.where((eb) => eb.not(hasLabel(eb, excluded)));
-
-    const search = query.search?.trim();
-    if (search) {
-      const pattern = `%${escapeLike(search)}%`;
-      q = q.where((eb) =>
-        eb.or([
-          sql<boolean>`m.fts @@ websearch_to_tsquery('simple', ${search})`,
-          // ILIKE fallback: the 'simple' parser does not segment CJK text.
-          eb('m.subject', 'ilike', pattern),
-          sql<boolean>`m.from_addr ->> 'email' ilike ${pattern}`,
-          sql<boolean>`m.from_addr ->> 'name' ilike ${pattern}`,
-        ]),
-      );
-    }
+      .where('m.account_id', '=', accountId)
+      .where((eb) => messageFilter(eb, query));
 
     if (query.cursor) {
       const [date, id] = decodeCursor(query.cursor, 2) as [string, string];
@@ -324,6 +369,61 @@ export class PgMessageRepository implements MessageRepository {
       items: page.map(toSummary),
       ...(rows.length > limit &&
         last && { nextCursor: encodeCursor([last.internal_date.toISOString(), last.id]) }),
+    };
+  }
+
+  async listThreads(accountId: string, query: MessageListQuery) {
+    const limit = clamp(query.limit, 1, 200);
+    // Threads with at least one matching message, ordered by their newest matching message.
+    const matching = this.db
+      .selectFrom('messages as m')
+      .select((eb) => ['m.thread_id', eb.fn.max('m.internal_date').as('last_at')])
+      .where('m.account_id', '=', accountId)
+      .where((eb) => messageFilter(eb, query))
+      .groupBy('m.thread_id');
+    let q = this.db.selectFrom(matching.as('t')).select(['t.thread_id', 't.last_at']);
+    if (query.cursor) {
+      const [date, id] = decodeCursor(query.cursor, 2) as [string, string];
+      q = q.where((eb) =>
+        eb(eb.refTuple('t.last_at', 't.thread_id'), '<', eb.tuple(new Date(date), id)),
+      );
+    }
+    const rows = await q
+      .orderBy('t.last_at', 'desc')
+      .orderBy('t.thread_id', 'desc')
+      .limit(limit + 1)
+      .execute();
+    const page = rows.slice(0, limit);
+    const last = page.at(-1);
+
+    // The summary covers the whole conversation, not just the matching messages (like Gmail).
+    const messages =
+      page.length === 0
+        ? []
+        : await this.db
+            .selectFrom('messages as m')
+            .select([...SUMMARY_COLUMNS, labelIds])
+            .where('m.account_id', '=', accountId)
+            .where(
+              'm.thread_id',
+              'in',
+              page.map((r) => r.thread_id),
+            )
+            .orderBy('m.internal_date')
+            .orderBy('m.id')
+            .execute();
+    const byThread = new Map<string, MessageSummary[]>();
+    for (const row of messages) {
+      const list = byThread.get(row.thread_id) ?? [];
+      list.push(toSummary(row));
+      byThread.set(row.thread_id, list);
+    }
+    return {
+      items: page.map((r) =>
+        toThreadSummary(r.thread_id, r.last_at, byThread.get(r.thread_id) ?? []),
+      ),
+      ...(rows.length > limit &&
+        last && { nextCursor: encodeCursor([last.last_at.toISOString(), last.thread_id]) }),
     };
   }
 

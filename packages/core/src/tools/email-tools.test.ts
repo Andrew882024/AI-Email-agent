@@ -114,6 +114,7 @@ describe.skipIf(!testDatabaseUrl)('email tools', () => {
       'get_thread',
       'list_emails',
       'list_labels',
+      'list_threads',
       'list_todos',
       'mark_read',
       'mark_unread',
@@ -155,6 +156,24 @@ describe.skipIf(!testDatabaseUrl)('email tools', () => {
         code: 'not_found',
         message: expect.stringContaining('Invoices'),
       });
+    });
+
+    it('lists conversations by view and query', async () => {
+      const page = (await call('list_threads', { limit: 1 })) as {
+        items: { threadId: string; messageIds: string[] }[];
+        nextCursor?: string;
+      };
+      expect(page.items).toEqual([
+        expect.objectContaining({ threadId: 't-m1', messageIds: ['m1'] }),
+      ]);
+      const next = (await call('list_threads', { cursor: page.nextCursor })) as {
+        items: { threadId: string }[];
+      };
+      expect(next.items.map((t) => t.threadId)).toEqual(['t-m2']);
+      const found = (await call('list_threads', { view: 'all', query: 'lunch' })) as {
+        items: { subject: string }[];
+      };
+      expect(found.items.map((t) => t.subject)).toEqual(['Lunch?']);
     });
 
     it('searches and reads emails, threads, labels and attachments', async () => {

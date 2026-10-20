@@ -164,6 +164,10 @@ describe.skipIf(!testDatabaseUrl)('HTTP API', () => {
         attachments: [{ filename: 'page.html' }],
       });
       expect((await get('/api/threads/t-m1')).json()).toMatchObject({ messages: [{ id: 'm1' }] });
+      expect((await get('/api/threads?view=inbox&limit=1')).json()).toMatchObject({
+        items: [{ threadId: 't-m1', messageIds: ['m1'], subject: 'Hello there' }],
+        nextCursor: expect.any(String),
+      });
       expect((await get('/api/labels')).json()).toEqual(
         expect.arrayContaining([expect.objectContaining({ id: 'INBOX', total: 2 })]),
       );
@@ -211,9 +215,22 @@ describe.skipIf(!testDatabaseUrl)('HTTP API', () => {
       expect(reauth.json().error.code).toBe('reauth_required');
     });
 
+    it('accepts tool calls with large attachments', async () => {
+      const big = Buffer.alloc(5 * 1024 * 1024, 1).toString('base64');
+      const res = await post('/api/tools/send_email', {
+        to: ['me@example.com'],
+        subject: 'big',
+        body: 'b',
+        attachments: [
+          { filename: 'big.bin', mimeType: 'application/octet-stream', contentBase64: big },
+        ],
+      });
+      expect(res.statusCode).toBe(200);
+    });
+
     it('lists tools with JSON schemas', async () => {
       const tools = (await get('/api/tools')).json();
-      expect(tools).toHaveLength(21);
+      expect(tools).toHaveLength(22);
       expect(tools.find((x: { name: string }) => x.name === 'reply_email')).toMatchObject({
         sideEffect: 'outbound',
         inputSchema: { type: 'object' },
