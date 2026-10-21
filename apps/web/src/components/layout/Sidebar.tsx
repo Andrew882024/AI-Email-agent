@@ -11,10 +11,11 @@ import {
 } from 'lucide-react';
 import { useLabels, useTodos } from '../../api/queries';
 import type { Label, View } from '../../api/types';
-import { type Route, useUi } from '../../store';
+import { type MailList, sameList, showList } from '../../router/mail-params';
+import { useUi } from '../../store';
 
 interface NavItem {
-  route: Route;
+  list: MailList;
   name: string;
   icon: LucideIcon;
   count?: number;
@@ -22,11 +23,10 @@ interface NavItem {
 }
 
 function NavRow({ item, active }: { item: NavItem; active: boolean }) {
-  const navigate = useUi((s) => s.navigate);
   return (
     <button
       type="button"
-      onClick={() => navigate(item.route)}
+      onClick={() => showList(item.list)}
       className={`flex h-8 w-full items-center gap-4 rounded-r-full pl-6 pr-4 text-sm ${active ? 'bg-[#d3e3fd] font-semibold text-[#041e49]' : 'text-gray-700 hover:bg-gray-200'}`}
     >
       <item.icon className="h-4 w-4 shrink-0" />
@@ -38,21 +38,15 @@ function NavRow({ item, active }: { item: NavItem; active: boolean }) {
   );
 }
 
-function sameRoute(a: Route, b: Route): boolean {
-  if (a.kind !== b.kind) return false;
-  if (a.kind === 'todos' || b.kind === 'todos') return true;
-  return a.view === b.view && a.label === b.label && !a.query && !b.query;
-}
-
-export function Sidebar() {
-  const route = useUi((s) => s.route);
+/** Lists and labels; `list` is the one shown now (from the URL), highlighted. */
+export function Sidebar({ list }: { list: MailList }) {
   const openCompose = useUi((s) => s.openCompose);
   const labels = useLabels();
   const todos = useTodos();
   const byId = new Map<string, Label>((labels.data ?? []).map((l) => [l.id, l]));
   const unread = (id: string) => byId.get(id)?.unread ?? 0;
   const mail = (view: View, name: string, icon: LucideIcon, count?: number): NavItem => ({
-    route: { kind: 'mail', view },
+    list: { kind: 'view', view },
     name,
     icon,
     count,
@@ -66,7 +60,7 @@ export function Sidebar() {
     mail('archived', 'Archived', Archive),
     mail('all', 'All Mail', Mail),
     {
-      route: { kind: 'todos' },
+      list: { kind: 'todos' },
       name: 'Todos',
       icon: CheckSquare,
       count: todos.data?.filter((t) => t.status === 'needsAction').length,
@@ -86,7 +80,7 @@ export function Sidebar() {
         </button>
       </div>
       {items.map((item) => (
-        <NavRow key={item.name} item={item} active={sameRoute(item.route, route)} />
+        <NavRow key={item.name} item={item} active={sameList(item.list, list)} />
       ))}
       {userLabels.length > 0 && (
         <>
@@ -95,13 +89,13 @@ export function Sidebar() {
             <NavRow
               key={label.id}
               item={{
-                route: { kind: 'mail', view: 'all', label: label.id, labelName: label.name },
+                list: { kind: 'label', name: label.name },
                 name: label.name,
                 icon: Tag,
                 count: label.unread,
                 bold: label.unread > 0,
               }}
-              active={sameRoute({ kind: 'mail', view: 'all', label: label.id }, route)}
+              active={sameList({ kind: 'label', name: label.name }, list)}
             />
           ))}
         </>

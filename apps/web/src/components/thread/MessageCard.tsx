@@ -1,7 +1,7 @@
 import { Download, Paperclip, Reply } from 'lucide-react';
 import { useState } from 'react';
 import type { Message } from '../../api/types';
-import { IconButton } from '../../components/ui/IconButton';
+import { IconButton } from '../ui/IconButton';
 import { displayName, fileSize, longDate } from '../../lib/format';
 import type { ComposeMode } from '../../store';
 import { EmailBody } from './EmailBody';

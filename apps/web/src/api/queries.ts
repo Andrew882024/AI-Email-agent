@@ -5,7 +5,7 @@ import {
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query';
-import { type Route, useUi } from '../store';
+import { useUi } from '../store';
 import { api, callTool, query } from './client';
 import { applyToMessage, applyToThread, belongsInList, labelChangeFor } from './optimistic';
 import type {
@@ -25,19 +25,28 @@ export function useAuthStatus() {
   return useQuery({ queryKey: ['auth'], queryFn: () => api<AuthStatus>('/api/auth/status') });
 }
 
-type MailRoute = Extract<Route, { kind: 'mail' }>;
+/** A thread list as the server takes it (the mail page resolves label names to ids). */
+export interface MailboxQuery {
+  view: View;
+  /** Label id. */
+  label?: string;
+  labelName?: string;
+  query?: string;
+}
+
+export const listKey = (q: MailboxQuery) => `${q.view}|${q.label ?? ''}|${q.query ?? ''}`;
 
 /** One page of a thread list (shared by the list and by page-cursor lookups). */
-export const threadsQuery = (route: MailRoute, cursor: string | undefined) => ({
-  queryKey: ['threads', route.view, route.label, route.query, cursor],
+export const threadsQuery = (list: MailboxQuery, cursor: string | undefined) => ({
+  queryKey: ['threads', list.view, list.label, list.query, cursor],
   queryFn: () =>
     api<Page<ThreadSummary>>(
-      `/api/threads${query({ view: route.view, label: route.label, q: route.query, limit: PAGE_SIZE, cursor })}`,
+      `/api/threads${query({ view: list.view, label: list.label, q: list.query, limit: PAGE_SIZE, cursor })}`,
     ),
 });
 
-export function useThreads(route: MailRoute, cursor: string | undefined, enabled = true) {
-  return useQuery({ ...threadsQuery(route, cursor), enabled, placeholderData: keepPreviousData });
+export function useThreads(list: MailboxQuery, cursor: string | undefined, enabled = true) {
+  return useQuery({ ...threadsQuery(list, cursor), enabled, placeholderData: keepPreviousData });
 }
 
 export function useThread(threadId: string) {

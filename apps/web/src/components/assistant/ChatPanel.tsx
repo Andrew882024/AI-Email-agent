@@ -37,6 +37,7 @@ import { MemoryDialog } from './MemoryDialog';
 import { WorkflowsDialog } from './WorkflowsDialog';
 import { IconButton } from '../ui/IconButton';
 import { Spinner } from '../ui/Spinner';
+import { openThread } from '../../router/mail-params';
 
 const SUGGESTIONS = [
   'Summarize my unread emails from today',
@@ -49,7 +50,6 @@ const toolLabel = (name: string) => name.replace(/_/g, ' ');
 
 /** Markdown with links to emails (#thread/<id>) opening the conversation in the app. */
 function Answer({ text }: { text: string }) {
-  const openThread = useUi((s) => s.openThread);
   return (
     <div className="chat-md text-sm leading-relaxed">
       <Markdown

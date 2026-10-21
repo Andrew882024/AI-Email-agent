@@ -13,6 +13,7 @@ import {
 import { type FormEvent, useState } from 'react';
 import { api } from '../../api/client';
 import { useAuthStatus, useSyncStatus } from '../../api/queries';
+import { showList } from '../../router/mail-params';
 import { useUi } from '../../store';
 import { IconButton } from '../ui/IconButton';
 import { Spinner } from '../ui/Spinner';
@@ -44,14 +45,13 @@ function SyncIndicator() {
   );
 }
 
-export function TopBar() {
-  const navigate = useUi((s) => s.navigate);
+/** Search (`search` is the query in the URL), sync status, assistant toggle and account menu. */
+export function TopBar({ search }: { search: string }) {
   const toggleChat = useUi((s) => s.toggleChat);
   const chatOpen = useUi((s) => s.chatOpen);
-  const route = useUi((s) => s.route);
   const auth = useAuthStatus();
   const qc = useQueryClient();
-  const activeQuery = route.kind === 'mail' ? (route.query ?? '') : '';
+  const activeQuery = search;
   const [text, setText] = useState(activeQuery);
   const [shownQuery, setShownQuery] = useState(activeQuery);
   // Keep the box in step when navigation clears the search.
@@ -68,7 +68,7 @@ export function TopBar() {
   const submit = (e: FormEvent) => {
     e.preventDefault();
     const q = text.trim();
-    navigate(q ? { kind: 'mail', view: 'all', query: q } : { kind: 'mail', view: 'inbox' });
+    showList(q ? { kind: 'search', query: q } : { kind: 'view', view: 'inbox' });
   };
   const account = auth.data?.account;
 
@@ -95,7 +95,7 @@ export function TopBar() {
             label="Clear search"
             onClick={() => {
               setText('');
-              navigate({ kind: 'mail', view: 'inbox' });
+              showList({ kind: 'view', view: 'inbox' });
             }}
           >
             <X className="h-4 w-4" />

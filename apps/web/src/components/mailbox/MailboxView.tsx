@@ -10,17 +10,26 @@ import {
   RefreshCw,
   Star,
 } from 'lucide-react';
-import { PAGE_SIZE, useAuthStatus, useLabels, useThreads, useTool } from '../../api/queries';
+import {
+  listKey,
+  type MailboxQuery,
+  PAGE_SIZE,
+  useAuthStatus,
+  useLabels,
+  useThreads,
+  useTool,
+} from '../../api/queries';
 import type { View } from '../../api/types';
-import { LabelMenu } from '../../components/mail/LabelMenu';
-import { Checkbox } from '../../components/ui/Checkbox';
-import { EmptyState } from '../../components/ui/EmptyState';
-import { IconButton } from '../../components/ui/IconButton';
-import { Spinner } from '../../components/ui/Spinner';
-import { usePageCursor } from '../../router';
-import { type Route, useUi } from '../../store';
+import { LabelMenu } from '../mail/LabelMenu';
+import { Checkbox } from '../ui/Checkbox';
+import { EmptyState } from '../ui/EmptyState';
+import { IconButton } from '../ui/IconButton';
+import { Spinner } from '../ui/Spinner';
+import { showPage } from '../../router/mail-params';
+import { useUi } from '../../store';
 import { ThreadRow } from './ThreadRow';
 import { useAddTodos } from './useAddTodos';
+import { usePageCursor } from './usePageCursor';
 
 const VIEW_TITLES: Record<View, string> = {
   inbox: 'Inbox',
@@ -34,14 +43,13 @@ const VIEW_TITLES: Record<View, string> = {
   spam: 'Spam',
 };
 
-export function MailboxPage({ route }: { route: Extract<Route, { kind: 'mail' }> }) {
-  const page = useUi((s) => s.page);
+/** A page of a thread list, with bulk actions and paging. */
+export function MailboxView({ list, page }: { list: MailboxQuery; page: number }) {
   const selected = useUi((s) => s.selected);
   const setSelected = useUi((s) => s.setSelected);
-  const nextPage = useUi((s) => s.nextPage);
-  const prevPage = useUi((s) => s.prevPage);
-  const { cursor, ready } = usePageCursor(route, page);
-  const threads = useThreads(route, cursor, ready);
+  const setCursors = useUi((s) => s.setCursors);
+  const { cursor, ready } = usePageCursor(list, page);
+  const threads = useThreads(list, cursor, ready);
   const labels = useLabels();
   const auth = useAuthStatus();
   const tool = useTool();
@@ -52,18 +60,26 @@ export function MailboxPage({ route }: { route: Extract<Route, { kind: 'mail' }>
   const items = threads.data?.items ?? [];
   const chosen = items.filter((t) => selected.includes(t.threadId));
   const chosenIds = chosen.flatMap((t) => t.messageIds);
-  const archiveView = route.view === 'archived';
+  const archiveView = list.view === 'archived';
   const anyUnread = chosen.some((t) => !t.isRead);
   const anyUnstarred = chosen.some((t) => !t.isStarred);
   const run = (name: string) => {
     tool.mutate({ name, input: { messageIds: chosenIds } });
     setSelected([]);
   };
-  const title = route.query
-    ? `Search results for “${route.query}”`
-    : route.label
-      ? (labelMap.get(route.label)?.name ?? 'Label')
-      : VIEW_TITLES[route.view];
+  const title = list.query
+    ? `Search results for “${list.query}”`
+    : list.label
+      ? (list.labelName ?? labelMap.get(list.label)?.name ?? 'Label')
+      : VIEW_TITLES[list.view];
+  const olderPage = () => {
+    const next = threads.data?.nextCursor;
+    if (!next) return;
+    // Remember how to load the next page, so it (and a reload of it) needs no extra requests.
+    const known = useUi.getState().cursors[listKey(list)] ?? [undefined];
+    setCursors(listKey(list), [...known.slice(0, page), next]);
+    showPage(page + 1);
+  };
   const first = (page - 1) * PAGE_SIZE + 1;
 
   return (
@@ -132,14 +148,10 @@ export function MailboxPage({ route }: { route: Extract<Route, { kind: 'mail' }>
               {first.toLocaleString()}–{(first + items.length - 1).toLocaleString()}
             </span>
           )}
-          <IconButton label="Newer" onClick={prevPage} disabled={page <= 1}>
+          <IconButton label="Newer" onClick={() => showPage(page - 1)} disabled={page <= 1}>
             <ChevronLeft className="h-[18px] w-[18px]" />
           </IconButton>
-          <IconButton
-            label="Older"
-            onClick={() => threads.data?.nextCursor && nextPage(threads.data.nextCursor)}
-            disabled={!threads.data?.nextCursor}
-          >
+          <IconButton label="Older" onClick={olderPage} disabled={!threads.data?.nextCursor}>
             <ChevronRight className="h-[18px] w-[18px]" />
           </IconButton>
         </div>
@@ -154,7 +166,7 @@ export function MailboxPage({ route }: { route: Extract<Route, { kind: 'mail' }>
           <EmptyState>Couldn't load mail: {threads.error.message}</EmptyState>
         ) : items.length === 0 ? (
           <EmptyState>
-            {route.query ? 'No messages matched your search.' : 'Nothing here.'}
+            {list.query ? 'No messages matched your search.' : 'Nothing here.'}
           </EmptyState>
         ) : (
           items.map((thread) => (

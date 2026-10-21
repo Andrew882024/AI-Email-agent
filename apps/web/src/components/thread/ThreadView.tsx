@@ -14,13 +14,14 @@ import { useAuthStatus, useLabels, useThread, useTool } from '../../api/queries'
 import type { EmailAddress, Message } from '../../api/types';
 import { displayName } from '../../lib/format';
 import { type ComposeMode, useUi } from '../../store';
-import { LabelMenu } from '../../components/mail/LabelMenu';
-import { Button } from '../../components/ui/Button';
-import { EmptyState } from '../../components/ui/EmptyState';
-import { IconButton } from '../../components/ui/IconButton';
-import { LabelChip } from '../../components/ui/LabelChip';
-import { Spinner } from '../../components/ui/Spinner';
+import { LabelMenu } from '../mail/LabelMenu';
+import { Button } from '../ui/Button';
+import { EmptyState } from '../ui/EmptyState';
+import { IconButton } from '../ui/IconButton';
+import { LabelChip } from '../ui/LabelChip';
+import { Spinner } from '../ui/Spinner';
 import { MessageCard } from './MessageCard';
+import { openThread } from '../../router/mail-params';
 
 const prefix = (subject: string, p: 'Re' | 'Fwd') =>
   new RegExp(`^${p === 'Re' ? 're' : 'fwd?|fw'}:`, 'i').test(subject.trim())
@@ -49,12 +50,11 @@ function replyTargets(message: Message, self: string, all: boolean): EmailAddres
   return everyone.length > 0 ? everyone : primary;
 }
 
-export function ThreadPage({ threadId }: { threadId: string }) {
+export function ThreadView({ threadId }: { threadId: string }) {
   const thread = useThread(threadId);
   const labels = useLabels();
   const auth = useAuthStatus();
   const tool = useTool();
-  const openThread = useUi((s) => s.openThread);
   const openCompose = useUi((s) => s.openCompose);
   const toast = useUi((s) => s.toast);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());

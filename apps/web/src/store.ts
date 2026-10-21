@@ -1,17 +1,5 @@
 import { create } from 'zustand';
-import type { SyncPhase, View } from './api/types';
-import { baseFor, formatHash, parseHash } from './lib/routes';
-
-export type Route =
-  | {
-      kind: 'mail';
-      view: View;
-      /** Label id; `labelName` is what the URL shows. */
-      label?: string;
-      labelName?: string;
-      query?: string;
-    }
-  | { kind: 'todos' };
+import type { SyncPhase } from './api/types';
 
 export type ComposeMode = 'new' | 'reply' | 'replyAll' | 'forward';
 
@@ -47,15 +35,11 @@ export interface Toast {
   kind: 'info' | 'error';
 }
 
+// UI state that isn't in the URL. Where the user is (page, list, conversation) is only in the URL:
+// see router/routes.tsx.
 interface UiState {
-  // Where we are. The URL hash is the source of truth (see useHashRouter): the actions below
-  // change the hash, and applyLocation mirrors it here.
-  route: Route;
-  /** 1-based page of the list. */
-  page: number;
-  /** Known page cursors of the current route: cursors[i] loads page i + 1 (undefined = first). */
-  cursors: (string | undefined)[];
-  openThreadId?: string;
+  /** Known page cursors per list (key from listKey): cursors[i] loads page i + 1. */
+  cursors: Record<string, (string | undefined)[]>;
   /** Selected thread ids in the list. */
   selected: string[];
   composes: ComposeDraft[];
@@ -66,12 +50,7 @@ interface UiState {
   sync: { phase: SyncPhase; synced?: number; error?: string };
   reauthRequired: boolean;
 
-  navigate(route: Route): void;
-  openThread(threadId: string | undefined): void;
-  nextPage(cursor: string): void;
-  prevPage(): void;
-  applyLocation(route: Route, page: number, threadId: string | undefined): void;
-  setCursors(cursors: (string | undefined)[]): void;
+  setCursors(listKey: string, cursors: (string | undefined)[]): void;
   toggleSelected(threadId: string): void;
   setSelected(threadIds: string[]): void;
   openCompose(draft: Partial<ComposeDraft> & { mode: ComposeMode }): void;
@@ -87,18 +66,8 @@ interface UiState {
 
 let nextId = 1;
 
-/** Go to a hash; the hashchange is what updates the state (so Back/Forward work the same way). */
-function go(hash: string): void {
-  if (window.location.hash !== hash) window.location.hash = hash;
-}
-
-const routeKey = (r: Route) =>
-  r.kind === 'todos' ? 'todos' : `${r.view}|${r.label ?? ''}|${r.query ?? ''}`;
-
 export const useUi = create<UiState>()((set) => ({
-  route: { kind: 'mail', view: 'inbox' },
-  page: 1,
-  cursors: [undefined],
+  cursors: {},
   selected: [],
   composes: [],
   chatOpen: false,
@@ -106,36 +75,7 @@ export const useUi = create<UiState>()((set) => ({
   sync: { phase: 'idle' },
   reauthRequired: false,
 
-  navigate: (route) => go(formatHash({ base: baseFor(route), page: 1 })),
-  openThread: (threadId) => go(formatHash({ ...parseHash(window.location.hash), threadId })),
-  nextPage: (cursor) => {
-    const { page, cursors } = useUi.getState();
-    set({ cursors: [...cursors.slice(0, page), cursor] });
-    go(formatHash({ base: parseHash(window.location.hash).base, page: page + 1 }));
-  },
-  prevPage: () => {
-    const { page } = useUi.getState();
-    go(formatHash({ base: parseHash(window.location.hash).base, page: Math.max(1, page - 1) }));
-  },
-  applyLocation: (route, page, openThreadId) =>
-    set((s) => {
-      const sameRoute = routeKey(s.route) === routeKey(route);
-      if (
-        sameRoute &&
-        s.page === page &&
-        s.openThreadId === openThreadId &&
-        (route.kind !== 'mail' || s.route.kind !== 'mail' || route.labelName === s.route.labelName)
-      )
-        return {};
-      return {
-        route,
-        page,
-        openThreadId,
-        cursors: sameRoute ? s.cursors : [undefined],
-        selected: [],
-      };
-    }),
-  setCursors: (cursors) => set({ cursors }),
+  setCursors: (listKey, cursors) => set((s) => ({ cursors: { ...s.cursors, [listKey]: cursors } })),
   toggleSelected: (threadId) =>
     set((s) => ({
       selected: s.selected.includes(threadId)

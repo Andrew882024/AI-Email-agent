@@ -16,6 +16,7 @@ import { useUi } from '../../store';
 import { Button } from '../ui/Button';
 import { IconButton } from '../ui/IconButton';
 import { Spinner } from '../ui/Spinner';
+import { openThread } from '../../router/mail-params';
 
 const STATUS: Record<WorkflowStatus, { text: string; className: string }> = {
   previewing: { text: 'Previewing…', className: 'bg-gray-100 text-gray-700' },
@@ -87,7 +88,6 @@ function Controls({ workflow, onDeleted }: { workflow: Workflow; onDeleted?: () 
 function Details({ id, onBack }: { id: string; onBack: () => void }) {
   const detail = useWorkflow(id);
   const run = useWorkflowAction();
-  const openThread = useUi((s) => s.openThread);
   const [showSkipped, setShowSkipped] = useState(false);
   if (detail.isLoading || !detail.data) return <Spinner />;
   const { workflow, decisions, threshold } = detail.data;
