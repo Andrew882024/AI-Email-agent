@@ -2,7 +2,7 @@ import * as Dialog from '@radix-ui/react-dialog';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, ExternalLink, Pause, Play, RotateCcw, Trash2, X, Zap } from 'lucide-react';
 import { useState } from 'react';
-import { callTool } from '../api/client';
+import { callTool } from '../../api/client';
 import {
   actionText,
   DOCUMENT_NAMES,
@@ -10,10 +10,12 @@ import {
   useWorkflows,
   type Workflow,
   type WorkflowStatus,
-} from '../api/workflows';
-import { shortDate } from '../lib/format';
-import { useUi } from '../store';
-import { Button, IconButton, Spinner } from './ui';
+} from '../../api/workflows';
+import { shortDate } from '../../lib/format';
+import { useUi } from '../../store';
+import { Button } from '../ui/Button';
+import { IconButton } from '../ui/IconButton';
+import { Spinner } from '../ui/Spinner';
 
 const STATUS: Record<WorkflowStatus, { text: string; className: string }> = {
   previewing: { text: 'Previewing…', className: 'bg-gray-100 text-gray-700' },

@@ -2,10 +2,12 @@ import * as Dialog from '@radix-ui/react-dialog';
 import { useQueryClient } from '@tanstack/react-query';
 import { Pencil, Trash2, X } from 'lucide-react';
 import { useState } from 'react';
-import { useMemory } from '../api/chat';
-import { api } from '../api/client';
-import { useUi } from '../store';
-import { Button, IconButton, Spinner } from './ui';
+import { useMemory } from '../../api/chat';
+import { api } from '../../api/client';
+import { useUi } from '../../store';
+import { Button } from '../ui/Button';
+import { IconButton } from '../ui/IconButton';
+import { Spinner } from '../ui/Spinner';
 
 /** What the assistant remembers about the user across chats; editable and deletable. */
 export function MemoryDialog(props: { open: boolean; onOpenChange: (open: boolean) => void }) {

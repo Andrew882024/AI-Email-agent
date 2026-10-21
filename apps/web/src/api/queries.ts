@@ -25,15 +25,19 @@ export function useAuthStatus() {
   return useQuery({ queryKey: ['auth'], queryFn: () => api<AuthStatus>('/api/auth/status') });
 }
 
-export function useThreads(route: Extract<Route, { kind: 'mail' }>, cursor: string | undefined) {
-  return useQuery({
-    queryKey: ['threads', route.view, route.label, route.query, cursor],
-    queryFn: () =>
-      api<Page<ThreadSummary>>(
-        `/api/threads${query({ view: route.view, label: route.label, q: route.query, limit: PAGE_SIZE, cursor })}`,
-      ),
-    placeholderData: keepPreviousData,
-  });
+type MailRoute = Extract<Route, { kind: 'mail' }>;
+
+/** One page of a thread list (shared by the list and by page-cursor lookups). */
+export const threadsQuery = (route: MailRoute, cursor: string | undefined) => ({
+  queryKey: ['threads', route.view, route.label, route.query, cursor],
+  queryFn: () =>
+    api<Page<ThreadSummary>>(
+      `/api/threads${query({ view: route.view, label: route.label, q: route.query, limit: PAGE_SIZE, cursor })}`,
+    ),
+});
+
+export function useThreads(route: MailRoute, cursor: string | undefined, enabled = true) {
+  return useQuery({ ...threadsQuery(route, cursor), enabled, placeholderData: keepPreviousData });
 }
 
 export function useThread(threadId: string) {

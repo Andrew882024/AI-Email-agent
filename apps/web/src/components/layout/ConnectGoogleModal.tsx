@@ -1,10 +1,11 @@
 import * as Dialog from '@radix-ui/react-dialog';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Mail } from 'lucide-react';
-import { api } from '../api/client';
-import { useAuthStatus } from '../api/queries';
-import { useUi } from '../store';
-import { Button, Spinner } from './ui';
+import { api } from '../../api/client';
+import { useAuthStatus } from '../../api/queries';
+import { useUi } from '../../store';
+import { Button } from '../ui/Button';
+import { Spinner } from '../ui/Spinner';
 
 /** Shown until a Google account is connected, and again when its sign-in expires. */
 export function ConnectGoogleModal() {

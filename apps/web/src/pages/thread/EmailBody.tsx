@@ -1,7 +1,7 @@
 import { ImageOff } from 'lucide-react';
 import { useMemo, useRef, useState } from 'react';
-import type { Message } from '../api/types';
-import { buildEmailDocument } from '../lib/email-html';
+import type { Message } from '../../api/types';
+import { buildEmailDocument } from '../../lib/email-html';
 
 /**
  * Renders an email body in a sandboxed iframe: scripts, forms and plugins are blocked by the

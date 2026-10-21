@@ -11,10 +11,11 @@ import {
   X,
 } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
-import { api } from '../api/client';
-import { useAuthStatus, useSyncStatus } from '../api/queries';
-import { useUi } from '../store';
-import { IconButton, Spinner } from './ui';
+import { api } from '../../api/client';
+import { useAuthStatus, useSyncStatus } from '../../api/queries';
+import { useUi } from '../../store';
+import { IconButton } from '../ui/IconButton';
+import { Spinner } from '../ui/Spinner';
 
 function SyncIndicator() {
   const sync = useUi((s) => s.sync);

@@ -9,9 +9,9 @@ import {
   Tag,
   type LucideIcon,
 } from 'lucide-react';
-import { useLabels, useTodos } from '../api/queries';
-import type { Label, View } from '../api/types';
-import { type Route, useUi } from '../store';
+import { useLabels, useTodos } from '../../api/queries';
+import type { Label, View } from '../../api/types';
+import { type Route, useUi } from '../../store';
 
 interface NavItem {
   route: Route;
@@ -95,7 +95,7 @@ export function Sidebar() {
             <NavRow
               key={label.id}
               item={{
-                route: { kind: 'mail', view: 'all', label: label.id },
+                route: { kind: 'mail', view: 'all', label: label.id, labelName: label.name },
                 name: label.name,
                 icon: Tag,
                 count: label.unread,

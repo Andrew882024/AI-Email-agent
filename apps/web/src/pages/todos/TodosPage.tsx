@@ -1,11 +1,13 @@
 import { CheckCircle2, Circle, Trash2 } from 'lucide-react';
 import { useState } from 'react';
-import { useTodos, useTool } from '../api/queries';
-import { displayName, shortDate } from '../lib/format';
-import { useUi } from '../store';
-import { EmptyState, IconButton, Spinner } from './ui';
+import { useTodos, useTool } from '../../api/queries';
+import { displayName, shortDate } from '../../lib/format';
+import { useUi } from '../../store';
+import { EmptyState } from '../../components/ui/EmptyState';
+import { IconButton } from '../../components/ui/IconButton';
+import { Spinner } from '../../components/ui/Spinner';
 
-export function TodosView() {
+export function TodosPage() {
   const todos = useTodos();
   const tool = useTool();
   const openThread = useUi((s) => s.openThread);

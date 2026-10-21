@@ -29,13 +29,14 @@ import {
   uploadChatFile,
   useChatSession,
   useChatSessions,
-} from '../api/chat';
-import { api, ApiError } from '../api/client';
-import { fileSize } from '../lib/format';
-import { useUi } from '../store';
+} from '../../api/chat';
+import { api, ApiError } from '../../api/client';
+import { fileSize } from '../../lib/format';
+import { useUi } from '../../store';
 import { MemoryDialog } from './MemoryDialog';
 import { WorkflowsDialog } from './WorkflowsDialog';
-import { IconButton, Spinner } from './ui';
+import { IconButton } from '../ui/IconButton';
+import { Spinner } from '../ui/Spinner';
 
 const SUGGESTIONS = [
   'Summarize my unread emails from today',

@@ -2,10 +2,11 @@ import * as Dialog from '@radix-ui/react-dialog';
 import * as Menu from '@radix-ui/react-dropdown-menu';
 import { Check, Minus, Plus, Tag } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
-import { callTool } from '../api/client';
-import { useLabels, useTool } from '../api/queries';
-import { useUi } from '../store';
-import { Button, IconButton } from './ui';
+import { callTool } from '../../api/client';
+import { useLabels, useTool } from '../../api/queries';
+import { useUi } from '../../store';
+import { Button } from '../ui/Button';
+import { IconButton } from '../ui/IconButton';
 
 /** Apply/remove user labels on a set of messages (a thread or a selection of threads). */
 export function LabelMenu({

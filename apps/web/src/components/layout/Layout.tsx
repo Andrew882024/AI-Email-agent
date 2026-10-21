@@ -1,23 +1,26 @@
-import { useServerEvents } from '../api/events';
-import { useAuthStatus } from '../api/queries';
-import { useUi } from '../store';
-import { ChatPanel } from './ChatPanel';
-import { ComposeDock } from './ComposeDock';
+import { useServerEvents } from '../../api/events';
+import { useAuthStatus } from '../../api/queries';
+import { useHashRouter } from '../../router';
+import { useUi } from '../../store';
+import { ChatPanel } from '../assistant/ChatPanel';
+import { ComposeDock } from '../compose/ComposeDock';
 import { ConnectGoogleModal } from './ConnectGoogleModal';
-import { MailList } from './MailList';
+import { MailboxPage } from '../../pages/mailbox/MailboxPage';
 import { Sidebar } from './Sidebar';
-import { ThreadView } from './ThreadView';
+import { ThreadPage } from '../../pages/thread/ThreadPage';
 import { Toasts } from './Toasts';
-import { TodosView } from './TodosView';
+import { TodosPage } from '../../pages/todos/TodosPage';
 import { TopBar } from './TopBar';
 
-export function App() {
+/** The frame every page shares: top bar, sidebar, the current page, assistant and overlays. */
+export function Layout() {
   const auth = useAuthStatus();
   const connected = !!auth.data?.account;
   const route = useUi((s) => s.route);
   const openThreadId = useUi((s) => s.openThreadId);
   const chatOpen = useUi((s) => s.chatOpen);
   useServerEvents(connected);
+  useHashRouter();
 
   return (
     <div className="flex h-screen flex-col bg-[#f6f8fc] text-[#1f1f1f]">
@@ -26,11 +29,11 @@ export function App() {
         <Sidebar />
         <main className="mb-2 mr-2 flex min-w-0 flex-1 flex-col overflow-hidden rounded-2xl bg-white">
           {!connected ? null : openThreadId ? (
-            <ThreadView key={openThreadId} threadId={openThreadId} />
+            <ThreadPage key={openThreadId} threadId={openThreadId} />
           ) : route.kind === 'todos' ? (
-            <TodosView />
+            <TodosPage />
           ) : (
-            <MailList route={route} />
+            <MailboxPage route={route} />
           )}
         </main>
         {chatOpen && <ChatPanel />}

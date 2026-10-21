@@ -1,3 +1,4 @@
+import { useQueryClient } from '@tanstack/react-query';
 import {
   Archive,
   ChevronLeft,
@@ -6,17 +7,20 @@ import {
   ListTodo,
   Mail,
   MailOpen,
-  Paperclip,
   RefreshCw,
   Star,
 } from 'lucide-react';
-import { useQueryClient } from '@tanstack/react-query';
-import { PAGE_SIZE, useAuthStatus, useLabels, useThreads, useTool } from '../api/queries';
-import type { Label, ThreadSummary, View } from '../api/types';
-import { participantsLine, shortDate } from '../lib/format';
-import { type Route, useUi } from '../store';
-import { LabelMenu } from './LabelMenu';
-import { Checkbox, EmptyState, IconButton, LabelChip, Spinner } from './ui';
+import { PAGE_SIZE, useAuthStatus, useLabels, useThreads, useTool } from '../../api/queries';
+import type { View } from '../../api/types';
+import { LabelMenu } from '../../components/mail/LabelMenu';
+import { Checkbox } from '../../components/ui/Checkbox';
+import { EmptyState } from '../../components/ui/EmptyState';
+import { IconButton } from '../../components/ui/IconButton';
+import { Spinner } from '../../components/ui/Spinner';
+import { usePageCursor } from '../../router';
+import { type Route, useUi } from '../../store';
+import { ThreadRow } from './ThreadRow';
+import { useAddTodos } from './useAddTodos';
 
 const VIEW_TITLES: Record<View, string> = {
   inbox: 'Inbox',
@@ -30,125 +34,14 @@ const VIEW_TITLES: Record<View, string> = {
   spam: 'Spam',
 };
 
-/** Add a todo for each thread, attached to its newest message. */
-function useAddTodos() {
-  const tool = useTool();
-  const toast = useUi((s) => s.toast);
-  return async (threads: ThreadSummary[]) => {
-    await Promise.all(
-      threads.map((t) =>
-        tool.mutateAsync({ name: 'add_todo', input: { messageId: t.messageIds.at(-1)! } }),
-      ),
-    ).then(
-      () => toast(threads.length === 1 ? 'Added to Todos' : `Added ${threads.length} todos`),
-      () => {}, // useTool already reported the error
-    );
-  };
-}
-
-function ThreadRow(props: {
-  thread: ThreadSummary;
-  labels: Map<string, Label>;
-  self?: string;
-  selected: boolean;
-  archiveView: boolean;
-}) {
-  const { thread, labels, self } = props;
-  const openThread = useUi((s) => s.openThread);
-  const toggleSelected = useUi((s) => s.toggleSelected);
-  const tool = useTool();
-  const addTodos = useAddTodos();
-  const ids = thread.messageIds;
-  const unread = !thread.isRead;
-  const chips = thread.labelIds.flatMap((id) => {
-    const label = labels.get(id);
-    return label?.type === 'user' ? [label] : [];
-  });
-
-  return (
-    <div
-      role="row"
-      onClick={() => openThread(thread.threadId)}
-      className={`group relative flex h-10 cursor-pointer items-center gap-2 border-b border-gray-100 px-3 text-sm hover:z-10 hover:shadow-[inset_1px_0_0_#dadce0,inset_-1px_0_0_#dadce0,0_1px_2px_rgba(60,64,67,.3)] ${props.selected ? 'bg-[#c2dbff]' : unread ? 'bg-white' : 'bg-[#f2f6fc]'}`}
-    >
-      <Checkbox
-        checked={props.selected}
-        onChange={() => toggleSelected(thread.threadId)}
-        label="Select conversation"
-      />
-      <IconButton
-        label={thread.isStarred ? 'Unstar' : 'Star'}
-        onClick={() =>
-          tool.mutate({ name: thread.isStarred ? 'unstar' : 'star', input: { messageIds: ids } })
-        }
-        className="h-8 w-8"
-      >
-        <Star className={`h-4 w-4 ${thread.isStarred ? 'fill-yellow-400 text-yellow-500' : ''}`} />
-      </IconButton>
-      <div className={`w-52 shrink-0 truncate ${unread ? 'font-semibold' : ''}`}>
-        {participantsLine(thread.participants, self)}
-        {thread.messageCount > 1 && (
-          <span className="ml-1 text-xs font-normal text-gray-500">{thread.messageCount}</span>
-        )}
-      </div>
-      <div className="flex min-w-0 flex-1 items-center gap-1.5">
-        {chips.map((label) => (
-          <LabelChip key={label.id} label={label} />
-        ))}
-        <span className={`truncate ${unread ? 'font-semibold' : ''}`}>
-          {thread.subject || '(no subject)'}
-          <span className="font-normal text-gray-500"> — {thread.snippet}</span>
-        </span>
-      </div>
-      {thread.hasAttachments && <Paperclip className="h-4 w-4 shrink-0 text-gray-500" />}
-      <span
-        className={`w-16 shrink-0 text-right text-xs group-hover:invisible ${unread ? 'font-semibold' : 'text-gray-600'}`}
-      >
-        {shortDate(thread.lastMessageAt)}
-      </span>
-      <div className="absolute right-2 hidden items-center group-hover:flex">
-        <IconButton
-          label={props.archiveView ? 'Move to inbox' : 'Archive'}
-          onClick={() =>
-            tool.mutate({
-              name: props.archiveView ? 'move_to_inbox' : 'archive',
-              input: { messageIds: ids },
-            })
-          }
-        >
-          {props.archiveView ? (
-            <Inbox className="h-[18px] w-[18px]" />
-          ) : (
-            <Archive className="h-[18px] w-[18px]" />
-          )}
-        </IconButton>
-        <IconButton
-          label={unread ? 'Mark as read' : 'Mark as unread'}
-          onClick={() =>
-            tool.mutate({ name: unread ? 'mark_read' : 'mark_unread', input: { messageIds: ids } })
-          }
-        >
-          {unread ? (
-            <MailOpen className="h-[18px] w-[18px]" />
-          ) : (
-            <Mail className="h-[18px] w-[18px]" />
-          )}
-        </IconButton>
-        <IconButton label="Add to Todos" onClick={() => void addTodos([thread])}>
-          <ListTodo className="h-[18px] w-[18px]" />
-        </IconButton>
-      </div>
-    </div>
-  );
-}
-
-export function MailList({ route }: { route: Extract<Route, { kind: 'mail' }> }) {
-  const cursors = useUi((s) => s.cursors);
+export function MailboxPage({ route }: { route: Extract<Route, { kind: 'mail' }> }) {
+  const page = useUi((s) => s.page);
   const selected = useUi((s) => s.selected);
   const setSelected = useUi((s) => s.setSelected);
   const nextPage = useUi((s) => s.nextPage);
   const prevPage = useUi((s) => s.prevPage);
-  const threads = useThreads(route, cursors.at(-1));
+  const { cursor, ready } = usePageCursor(route, page);
+  const threads = useThreads(route, cursor, ready);
   const labels = useLabels();
   const auth = useAuthStatus();
   const tool = useTool();
@@ -171,7 +64,7 @@ export function MailList({ route }: { route: Extract<Route, { kind: 'mail' }> })
     : route.label
       ? (labelMap.get(route.label)?.name ?? 'Label')
       : VIEW_TITLES[route.view];
-  const first = (cursors.length - 1) * PAGE_SIZE + 1;
+  const first = (page - 1) * PAGE_SIZE + 1;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -239,7 +132,7 @@ export function MailList({ route }: { route: Extract<Route, { kind: 'mail' }> })
               {first.toLocaleString()}–{(first + items.length - 1).toLocaleString()}
             </span>
           )}
-          <IconButton label="Newer" onClick={prevPage} disabled={cursors.length <= 1}>
+          <IconButton label="Newer" onClick={prevPage} disabled={page <= 1}>
             <ChevronLeft className="h-[18px] w-[18px]" />
           </IconButton>
           <IconButton
@@ -253,7 +146,7 @@ export function MailList({ route }: { route: Extract<Route, { kind: 'mail' }> })
       </div>
       <h1 className="px-5 pb-1 pt-3 text-sm font-medium text-gray-700">{title}</h1>
       <div className="min-h-0 flex-1 overflow-y-auto" role="grid" aria-label={title}>
-        {threads.isLoading ? (
+        {!ready || threads.isLoading ? (
           <EmptyState>
             <Spinner />
           </EmptyState>

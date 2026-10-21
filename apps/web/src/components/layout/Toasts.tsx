@@ -1,6 +1,6 @@
 import { X } from 'lucide-react';
 import { useEffect } from 'react';
-import { type Toast, useUi } from '../store';
+import { type Toast, useUi } from '../../store';
 
 function ToastItem({ toast }: { toast: Toast }) {
   const dismiss = useUi((s) => s.dismissToast);
