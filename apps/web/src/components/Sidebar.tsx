@@ -1,15 +1,12 @@
 import {
   Archive,
   CheckSquare,
-  File,
   Inbox,
   Mail,
   Pencil,
   Send,
-  ShieldAlert,
   Star,
   Tag,
-  Trash2,
   type LucideIcon,
 } from 'lucide-react';
 import { useLabels, useTodos } from '../api/queries';
@@ -66,7 +63,6 @@ export function Sidebar() {
     mail('inbox', 'Inbox', Inbox, unread('INBOX')),
     mail('starred', 'Starred', Star),
     mail('sent', 'Sent', Send),
-    mail('drafts', 'Drafts', File, byId.get('DRAFT')?.total),
     mail('archived', 'Archived', Archive),
     mail('all', 'All Mail', Mail),
     {
@@ -75,8 +71,6 @@ export function Sidebar() {
       icon: CheckSquare,
       count: todos.data?.filter((t) => t.status === 'needsAction').length,
     },
-    mail('spam', 'Spam', ShieldAlert, unread('SPAM')),
-    mail('trash', 'Trash', Trash2),
   ];
   const userLabels = (labels.data ?? []).filter((l) => l.type === 'user');
 

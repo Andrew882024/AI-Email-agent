@@ -19,7 +19,7 @@ import type {
   View,
 } from './types';
 
-export const PAGE_SIZE = 25;
+export const PAGE_SIZE = 50;
 
 export function useAuthStatus() {
   return useQuery({ queryKey: ['auth'], queryFn: () => api<AuthStatus>('/api/auth/status') });
