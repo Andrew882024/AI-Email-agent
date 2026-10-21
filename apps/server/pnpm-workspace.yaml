@@ -1,0 +1,7 @@
+# Install scripts are off by default (pnpm 10+). esbuild (via tsx) ships its binary as an
+# optional platform package, so its postinstall check isn't needed.
+allowBuilds:
+  esbuild: false
+  # Gemini SDK: a no-op preinstall, and protobufjs's postinstall only checks its CLI tooling.
+  '@google/genai': false
+  protobufjs: false

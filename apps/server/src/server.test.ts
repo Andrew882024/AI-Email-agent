@@ -16,18 +16,14 @@ import {
   ReauthRequiredError,
   type Repositories,
   ToolRegistry,
-} from '@ai-email/core';
+} from './core/index.js';
 import type { FastifyInstance } from 'fastify';
 import { sql } from 'kysely';
 import { pino } from 'pino';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import {
-  createTestDatabase,
-  type TestDatabase,
-  testDatabaseUrl,
-} from '../../../packages/core/test/helpers/db.js';
-import { FakeGateways } from '../../../packages/core/test/helpers/fake-google.js';
-import { ScriptedLLM } from '../../../packages/core/test/helpers/fake-llm.js';
+import { createTestDatabase, type TestDatabase, testDatabaseUrl } from '../test/helpers/db.js';
+import { FakeGateways } from '../test/helpers/fake-google.js';
+import { ScriptedLLM } from '../test/helpers/fake-llm.js';
 import { buildServer } from './server.js';
 
 const logger = pino({ level: 'silent' });

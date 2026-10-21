@@ -1,5 +1,5 @@
 // Server entry point: `pnpm server`.
-import { ConfigError, loadConfig } from '@ai-email/core';
+import { ConfigError, loadConfig } from './core/index.js';
 import { StartupError, startServer } from './start.js';
 
 try {

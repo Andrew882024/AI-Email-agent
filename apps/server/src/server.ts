@@ -17,7 +17,7 @@ import {
   ToolError,
   type ToolErrorCode,
   type ToolRegistry,
-} from '@ai-email/core';
+} from './core/index.js';
 import Fastify, {
   type FastifyBaseLogger,
   type FastifyInstance,

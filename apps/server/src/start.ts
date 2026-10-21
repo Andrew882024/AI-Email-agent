@@ -1,4 +1,4 @@
-import { type AppConfig, checkDatabase, migrateToLatest } from '@ai-email/core';
+import { type AppConfig, checkDatabase, migrateToLatest } from './core/index.js';
 import { buildServer } from './server.js';
 import { createServices } from './services.js';
 

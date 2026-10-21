@@ -34,7 +34,7 @@ import {
   SyncScheduler,
   TasksSync,
   ToolRegistry,
-} from '@ai-email/core';
+} from './core/index.js';
 
 export interface Services {
   config: AppConfig;
