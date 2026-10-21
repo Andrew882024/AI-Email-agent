@@ -12,7 +12,7 @@ import {
 import { useEffect, useRef, useState } from 'react';
 import { useAuthStatus, useLabels, useThread, useTool } from '../../api/queries';
 import type { EmailAddress, Message } from '../../api/types';
-import { displayName } from '../../lib/format';
+import { displayName } from '../../utils/format';
 import { type ComposeMode, useUi } from '../../store';
 import { LabelMenu } from '../mail/LabelMenu';
 import { Button } from '../ui/Button';

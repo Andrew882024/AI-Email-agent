@@ -31,7 +31,7 @@ import {
   useChatSessions,
 } from '../../api/chat';
 import { api, ApiError } from '../../api/client';
-import { fileSize } from '../../lib/format';
+import { fileSize } from '../../utils/format';
 import { useUi } from '../../store';
 import { MemoryDialog } from './MemoryDialog';
 import { WorkflowsDialog } from './WorkflowsDialog';

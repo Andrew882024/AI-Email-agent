@@ -2,7 +2,7 @@ import { Maximize2, Minus, Paperclip, Trash2, X } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useRef } from 'react';
 import { callTool } from '../../api/client';
-import { fileSize, splitRecipients } from '../../lib/format';
+import { fileSize, splitRecipients } from '../../utils/format';
 import { type ComposeAttachment, type ComposeDraft, useUi } from '../../store';
 import { Button } from '../ui/Button';
 import { IconButton } from '../ui/IconButton';

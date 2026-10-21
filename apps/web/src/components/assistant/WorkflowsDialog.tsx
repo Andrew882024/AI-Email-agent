@@ -11,7 +11,7 @@ import {
   type Workflow,
   type WorkflowStatus,
 } from '../../api/workflows';
-import { shortDate } from '../../lib/format';
+import { shortDate } from '../../utils/format';
 import { useUi } from '../../store';
 import { Button } from '../ui/Button';
 import { IconButton } from '../ui/IconButton';

@@ -1,7 +1,7 @@
 import { CheckCircle2, Circle, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { useTodos, useTool } from '../../api/queries';
-import { displayName, shortDate } from '../../lib/format';
+import { displayName, shortDate } from '../../utils/format';
 import { EmptyState } from '../ui/EmptyState';
 import { IconButton } from '../ui/IconButton';
 import { Spinner } from '../ui/Spinner';

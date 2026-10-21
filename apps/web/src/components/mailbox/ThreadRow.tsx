@@ -4,7 +4,7 @@ import type { Label, ThreadSummary } from '../../api/types';
 import { Checkbox } from '../ui/Checkbox';
 import { IconButton } from '../ui/IconButton';
 import { LabelChip } from '../ui/LabelChip';
-import { participantsLine, shortDate } from '../../lib/format';
+import { participantsLine, shortDate } from '../../utils/format';
 import { useUi } from '../../store';
 import { useAddTodos } from './useAddTodos';
 import { openThread } from '../../router/mail-params';
