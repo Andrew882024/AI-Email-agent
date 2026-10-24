@@ -3,6 +3,7 @@ import { Spinner } from '../components/ui/Spinner';
 import { LoginPage } from '../pages/login/LoginPage';
 import { MailPage } from '../pages/mail/MailPage';
 import { type AppLocation, navigate, useLocation } from './location';
+import { parseLoginHash } from './login-params';
 import { formatMailHash, parseMailHash } from './mail-params';
 import { type Session, useSession } from '../state/auth';
 
@@ -26,8 +27,10 @@ export const routes: RouteDef[] = [
   },
   {
     path: '/login',
-    redirect: (session, { hash }) => (session === 'signed_in' ? `/mail${hash}` : undefined),
-    render: () => <LoginPage />,
+    // A failed sign-in's error is the login page's own; anything else is where to go afterwards.
+    redirect: (session, { hash }) =>
+      session !== 'signed_in' ? undefined : parseLoginHash(hash).error ? '/mail' : `/mail${hash}`,
+    render: ({ hash }) => <LoginPage params={parseLoginHash(hash)} />,
   },
   {
     path: '/mail',

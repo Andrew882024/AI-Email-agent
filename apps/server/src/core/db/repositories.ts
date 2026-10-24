@@ -50,6 +50,25 @@ export interface StoredOAuthToken {
   updatedAt: Date;
 }
 
+export interface StoredSession {
+  /** SHA-256 of the cookie token. */
+  id: string;
+  accountId: string;
+  createdAt: Date;
+  lastSeenAt: Date;
+  expiresAt: Date;
+}
+
+/** Browser sign-ins. */
+export interface SessionRepository {
+  create(session: { id: string; accountId: string; expiresAt: Date }): Promise<void>;
+  /** The session, if it exists and hasn't expired. */
+  get(id: string): Promise<StoredSession | undefined>;
+  /** Mark as used now and push the expiry out. */
+  touch(id: string, expiresAt: Date): Promise<void>;
+  delete(id: string): Promise<void>;
+}
+
 export interface OAuthTokenRepository {
   get(accountId: string): Promise<StoredOAuthToken | undefined>;
   /** Insert or replace the account's token. */
@@ -249,6 +268,8 @@ export interface ActionLogRepository {
   insert(entry: NewActionLog): Promise<ActionLogEntry>;
   /** Newest first. */
   query(filter: ActionLogQuery): Promise<Page<ActionLogEntry>>;
+  /** Forget an account's history (when the user deletes their account). */
+  deleteForAccount(accountId: string): Promise<void>;
 }
 
 export interface SyncStateRepository {
@@ -334,6 +355,7 @@ export interface MemoryRepository {
 export interface ChatFileRepository {
   create(file: Omit<ChatFile, 'id' | 'createdAt'>): Promise<ChatFile>;
   get(id: string): Promise<ChatFile | undefined>;
+  listForAccount(accountId: string): Promise<ChatFile[]>;
 }
 
 export interface NewWorkflow {
@@ -393,6 +415,7 @@ export interface WorkflowRepository {
 export interface Repositories {
   accounts: AccountRepository;
   oauthTokens: OAuthTokenRepository;
+  sessions: SessionRepository;
   labels: LabelRepository;
   messages: MessageRepository;
   todos: TodoRepository;

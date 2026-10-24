@@ -12,7 +12,6 @@ export * from './auth/scopes.js';
 export * from './auth/secret-cipher.js';
 export * from './auth/token-store.js';
 export * from './auth/google-auth.js';
-export * from './auth/open-external.js';
 export * from './events/event-bus.js';
 export * from './google/errors.js';
 export * from './google/retry.js';

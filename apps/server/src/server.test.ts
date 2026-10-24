@@ -1,5 +1,8 @@
+import { createHash } from 'node:crypto';
+import { existsSync } from 'node:fs';
 import {
   ActionLogger,
+  AesGcmSecretCipher,
   ChatAgent,
   ChatFileStore,
   MemoryService,
@@ -28,6 +31,8 @@ import { buildServer } from './server.js';
 
 const logger = pino({ level: 'silent' });
 const ORIGIN = 'http://localhost:5173';
+const OPTIONS = { appUrl: ORIGIN, allowedOrigins: [] as string[], heartbeatMs: 50 };
+const cipher = new AesGcmSecretCipher('k'.repeat(32));
 
 describe.skipIf(!testDatabaseUrl)('HTTP API', () => {
   let t: TestDatabase;
@@ -38,23 +43,40 @@ describe.skipIf(!testDatabaseUrl)('HTTP API', () => {
   let account: Account;
   let worker: OutboxWorker;
   let tools: ToolRegistry;
-  const scheduler = { syncNow: vi.fn() };
+  let cookie: string; // signed in as `account`
+  const scheduler = { syncNow: vi.fn(), addAccount: vi.fn(), removeAccount: vi.fn(async () => {}) };
   const auth = {
-    startAuth: vi.fn<GoogleAuthProvider['startAuth']>(),
+    beginAuth: vi.fn<GoogleAuthProvider['beginAuth']>(async () => ({
+      url: 'https://accounts.google.com/o/oauth2/v2/auth?state=st',
+      state: 'st',
+      codeVerifier: 'verifier',
+    })),
+    finishAuth: vi.fn<GoogleAuthProvider['finishAuth']>(),
     getClient: vi.fn(),
     isConnected: vi.fn(async () => true),
     invalidate: vi.fn(),
     revoke: vi.fn(async () => {}),
   };
 
+  /** A signed-in browser's cookie for the account. */
+  const signIn = async (accountId: string) => {
+    const token = `token-${accountId}`;
+    await repos.sessions.create({
+      id: createHash('sha256').update(token).digest('base64url'),
+      accountId,
+      expiresAt: new Date(Date.now() + 3600_000),
+    });
+    return `sid=${token}`;
+  };
   const get = (url: string, headers: Record<string, string> = {}) =>
-    app.inject({ method: 'GET', url, headers: { host: '127.0.0.1:4317', ...headers } });
+    app.inject({ method: 'GET', url, headers: { host: '127.0.0.1:4317', cookie, ...headers } });
   const post = (url: string, payload?: unknown, headers: Record<string, string> = {}) =>
     app.inject({
       method: 'POST',
       url,
       headers: {
         host: '127.0.0.1:4317',
+        cookie,
         ...(payload !== undefined && { 'content-type': 'application/json' }),
         ...headers,
       },
@@ -72,6 +94,7 @@ describe.skipIf(!testDatabaseUrl)('HTTP API', () => {
     await sql`truncate action_logs`.execute(t.db);
     vi.clearAllMocks();
     account = await repos.accounts.upsert({ email: 'me@example.com', googleSub: 's' });
+    cookie = await signIn(account.id);
     google = new FakeGateways();
     events = new EventBus(logger);
     const actions = new ActionLogger(repos.actionLogs, logger);
@@ -117,10 +140,7 @@ describe.skipIf(!testDatabaseUrl)('HTTP API', () => {
       data: Buffer.from('png'),
     });
     await mailSync.sync(account.id);
-    app = await buildServer(
-      { repos, auth, tools, events, scheduler, logger },
-      { allowedOrigins: [ORIGIN], heartbeatMs: 50 },
-    );
+    app = await buildServer({ repos, auth, cipher, tools, events, scheduler, logger }, OPTIONS);
   });
   afterEach(() => app?.close());
 
@@ -246,6 +266,28 @@ describe.skipIf(!testDatabaseUrl)('HTTP API', () => {
     });
   });
 
+  describe('several users', () => {
+    it('keeps each user to their own mail, logs and chats', async () => {
+      const other = await repos.accounts.upsert({ email: 'b@example.com', googleSub: 'b' });
+      const theirs = { cookie: await signIn(other.id) };
+      await post('/api/tools/star', { messageIds: ['m1'] }); // a logged action of mine
+      const chat = await repos.chats.createSession(account.id);
+
+      expect((await get('/api/auth/status', theirs)).json().account.email).toBe('b@example.com');
+      expect((await get('/api/messages?view=inbox', theirs)).json().items).toEqual([]);
+      expect((await get('/api/threads?view=all', theirs)).json().items).toEqual([]);
+      expect((await get('/api/messages/m1', theirs)).statusCode).toBe(404);
+      expect((await get('/api/threads/t-m1', theirs)).statusCode).toBe(404);
+      expect((await get('/api/messages/m2/attachments/1', theirs)).statusCode).toBe(404);
+      expect((await get('/api/logs', theirs)).json().items).toEqual([]);
+      expect((await get(`/api/chat/sessions/${chat.id}`, theirs)).statusCode).toBe(404);
+
+      await post('/api/tools/unstar', { messageIds: ['m1'] }, theirs);
+      expect((await repos.messages.getById(account.id, 'm1'))?.isStarred).toBe(true);
+      expect((await get('/api/messages?view=inbox')).json().items).toHaveLength(2);
+    });
+  });
+
   describe('assistant', () => {
     let chatApp: FastifyInstance;
     let chatAgent: ChatAgent;
@@ -262,6 +304,7 @@ describe.skipIf(!testDatabaseUrl)('HTTP API', () => {
         url,
         headers: {
           host: '127.0.0.1:4317',
+          cookie,
           ...(payload !== undefined && { 'content-type': 'application/json' }),
         },
         ...(payload !== undefined && { payload: JSON.stringify(payload) }),
@@ -299,13 +342,14 @@ describe.skipIf(!testDatabaseUrl)('HTTP API', () => {
         {
           repos,
           auth,
+          cipher,
           tools,
           events: new EventBus(logger),
           scheduler,
           logger,
           chat: { agent, files, memory },
         },
-        { allowedOrigins: [] },
+        OPTIONS,
       );
     });
     afterEach(async () => {
@@ -413,22 +457,85 @@ describe.skipIf(!testDatabaseUrl)('HTTP API', () => {
       expect(events(res.body).at(-1)).toEqual({ type: 'done', status: 'complete' });
     });
 
+    it('deletes an account and everything kept for it, leaving other users alone', async () => {
+      const other = await repos.accounts.upsert({ email: 'b@example.com', googleSub: 'b' });
+      const theirs = await signIn(other.id);
+      const upload = (
+        await send('/api/chat/files', {
+          filename: 'n.txt',
+          mimeType: 'text/plain',
+          contentBase64: Buffer.from('hello').toString('base64'),
+        })
+      ).json();
+      const stored = (await repos.chatFiles.get(upload.id))!.storagePath;
+      const session = (await send('/api/chat/sessions', {})).json();
+      turns.push(() => 'Hello.');
+      await send(`/api/chat/sessions/${session.id}/messages`, { text: 'hi', fileIds: [upload.id] });
+      await chatAgent.idle();
+      await post('/api/tools/star', { messageIds: ['m1'] });
+      expect(existsSync(stored)).toBe(true);
+
+      const res = await chatApp.inject({
+        method: 'DELETE',
+        url: '/api/account',
+        headers: { host: '127.0.0.1:4317', cookie },
+      });
+      expect(res.json()).toEqual({ ok: true });
+      expect(res.cookies.find((c) => c.name === 'sid')?.value).toBe('');
+      expect(auth.revoke).toHaveBeenCalledWith(account.id);
+      expect(scheduler.removeAccount).toHaveBeenCalledWith(account.id);
+      expect(existsSync(stored)).toBe(false);
+
+      // Nothing of the account is left in any table.
+      const { rows: tables } = await sql<{ table_name: string; scoped: boolean }>`
+        select table_name, bool_or(column_name = 'account_id') as scoped
+        from information_schema.columns
+        where table_schema = 'public' and table_name not like 'kysely_%'
+        group by table_name`.execute(t.db);
+      for (const { table_name, scoped } of tables) {
+        const { rows } = await sql<{ n: string }>`
+          select count(*) as n from ${sql.table(table_name)}
+          ${scoped ? sql`where account_id = ${account.id}` : sql``}`.execute(t.db);
+        const expected = !scoped && table_name === 'accounts' ? 1 : 0; // the other user
+        expect([table_name, Number(rows[0]!.n)]).toEqual([table_name, expected]);
+      }
+      expect((await send('/api/auth/status')).json().account).toBeNull();
+      const stillThere = await chatApp.inject({
+        method: 'GET',
+        url: '/api/auth/status',
+        headers: { host: '127.0.0.1:4317', cookie: theirs },
+      });
+      expect(stillThere.json().account.email).toBe('b@example.com');
+    });
+
     it('edits and deletes memories, and 404s unknown sessions as JSON', async () => {
       const item = await repos.memory.add(account.id, {
         content: 'Likes tea.',
         category: 'preference',
       });
+      const other = await repos.accounts.upsert({ email: 'b@example.com', googleSub: 'b' });
+      const hijack = await chatApp.inject({
+        method: 'PATCH',
+        url: `/api/memory/${item.id}`,
+        headers: {
+          host: '127.0.0.1:4317',
+          cookie: await signIn(other.id),
+          'content-type': 'application/json',
+        },
+        payload: JSON.stringify({ content: 'Hijacked.' }),
+      });
+      expect(hijack.statusCode).toBe(404);
       const patched = await chatApp.inject({
         method: 'PATCH',
         url: `/api/memory/${item.id}`,
-        headers: { host: '127.0.0.1:4317', 'content-type': 'application/json' },
+        headers: { host: '127.0.0.1:4317', cookie, 'content-type': 'application/json' },
         payload: JSON.stringify({ content: 'Likes green tea.' }),
       });
       expect(patched.json().content).toBe('Likes green tea.');
       const removed = await chatApp.inject({
         method: 'DELETE',
         url: `/api/memory/${item.id}`,
-        headers: { host: '127.0.0.1:4317' },
+        headers: { host: '127.0.0.1:4317', cookie },
       });
       expect(removed.json()).toEqual({ ok: true });
       expect((await send('/api/memory')).json()).toEqual([]);
@@ -444,52 +551,93 @@ describe.skipIf(!testDatabaseUrl)('HTTP API', () => {
   });
 
   describe('auth & sync', () => {
-    it('reports status, signs in, and signs out', async () => {
-      expect((await get('/api/auth/status')).json()).toEqual({
+    /** Leave for Google; returns the sealed sign-in cookie set on the way out. */
+    const leaveForGoogle = async (query = '') => {
+      const res = await get(`/api/auth/google${query}`, { cookie: '' });
+      expect(res.statusCode).toBe(302);
+      expect(res.headers.location).toBe('https://accounts.google.com/o/oauth2/v2/auth?state=st');
+      const set = res.cookies.find((c) => c.name === 'sign_in')!;
+      expect(set).toMatchObject({ httpOnly: true, sameSite: 'Lax', path: '/api/auth' });
+      return `sign_in=${set.value}`;
+    };
+    const comeBack = (query: string, signInCookie: string) =>
+      get(`/api/auth/callback?${query}`, { cookie: signInCookie });
+
+    it('signs a browser in through Google and lands on the mail page', async () => {
+      auth.finishAuth.mockResolvedValueOnce({ account });
+      const back = await comeBack('code=c&state=st', await leaveForGoogle());
+      expect(auth.finishAuth).toHaveBeenCalledWith({ code: 'c', codeVerifier: 'verifier' });
+      expect(back.statusCode).toBe(302);
+      expect(back.headers.location).toBe('/mail');
+      const sid = back.cookies.find((c) => c.name === 'sid')!;
+      expect(sid).toMatchObject({ httpOnly: true, sameSite: 'Lax', path: '/' });
+      expect(sid.maxAge).toBe(30 * 24 * 3600);
+      expect(scheduler.addAccount).toHaveBeenCalledWith(account.id);
+      expect((await get('/api/auth/status', { cookie: `sid=${sid.value}` })).json()).toEqual({
         account: { id: account.id, email: 'me@example.com' },
         connected: true,
       });
-      auth.startAuth.mockResolvedValueOnce(account);
-      expect((await post('/api/auth/login')).json()).toEqual({
-        account: { id: account.id, email: 'me@example.com' },
-      });
-      expect(scheduler.syncNow).toHaveBeenCalled();
-      auth.startAuth.mockRejectedValueOnce(
-        new AuthFlowError('Google sign-in was not completed: access_denied'),
+    });
+
+    it('sends failed sign-ins back to the login page with the reason', async () => {
+      const failed = async (res: Awaited<ReturnType<typeof get>>) => {
+        expect(res.statusCode).toBe(302);
+        expect(res.cookies.some((c) => c.name === 'sid')).toBe(false);
+        return decodeURIComponent(res.headers.location!.replace('/login#error=', ''));
+      };
+      expect(await failed(await comeBack('code=c&state=other', await leaveForGoogle()))).toMatch(
+        /expired or was started in another tab/,
       );
-      const denied = await post('/api/auth/login');
-      expect(denied.statusCode).toBe(400);
-      expect(denied.json().error.code).toBe('auth_failed');
-      expect((await post('/api/auth/logout')).statusCode).toBe(200);
-      expect(auth.revoke).toHaveBeenCalledWith(account.id);
+      expect(await failed(await comeBack('code=c&state=st', ''))).toMatch(/expired/);
+      expect(
+        await failed(await comeBack('error=access_denied&state=st', await leaveForGoogle())),
+      ).toBe('Sign-in was cancelled.');
+      expect(auth.finishAuth).not.toHaveBeenCalled();
+
+      auth.finishAuth.mockRejectedValueOnce(new AuthFlowError('Not all permissions were granted'));
+      expect(await failed(await comeBack('code=c&state=st', await leaveForGoogle()))).toBe(
+        'Not all permissions were granted',
+      );
+      // Google gave no refresh token and none is stored: ask again with the consent screen.
+      auth.finishAuth.mockResolvedValueOnce({ consentRequired: true });
+      const again = await comeBack('code=c&state=st', await leaveForGoogle());
+      expect(again.headers.location).toBe('/api/auth/google?consent=1');
+      await leaveForGoogle('?consent=1');
+      expect(auth.beginAuth).toHaveBeenLastCalledWith({ consent: true });
     });
 
-    it('rejects a second concurrent sign-in', async () => {
-      let finish!: (a: Account) => void;
-      auth.startAuth.mockReturnValueOnce(new Promise((resolve) => (finish = resolve)));
-      const first = post('/api/auth/login');
-      await vi.waitFor(() => expect(auth.startAuth).toHaveBeenCalled());
-      expect((await post('/api/auth/login')).statusCode).toBe(409);
-      finish(account);
-      expect((await first).statusCode).toBe(200);
-    });
-
-    it('requires an account', async () => {
-      await sql`truncate accounts cascade`.execute(t.db);
+    it('signs out this browser only, keeping Google access', async () => {
+      const out = await post('/api/auth/logout');
+      expect(out.statusCode).toBe(200);
+      expect(out.cookies.find((c) => c.name === 'sid')?.value).toBe('');
+      expect(auth.revoke).not.toHaveBeenCalled();
       expect((await get('/api/auth/status')).json()).toEqual({ account: null, connected: false });
-      expect((await get('/api/messages')).json().error.code).toBe('not_connected');
+      expect((await get('/api/messages')).statusCode).toBe(401);
+    });
+
+    it('requires a signed-in browser', async () => {
+      const anonymous = { cookie: '' };
+      expect((await get('/api/auth/status', anonymous)).json()).toEqual({
+        account: null,
+        connected: false,
+      });
+      const res = await get('/api/messages', anonymous);
+      expect(res.statusCode).toBe(401);
+      expect(res.json().error.code).toBe('not_signed_in');
+      expect((await get('/api/messages', { cookie: 'sid=forged' })).statusCode).toBe(401);
+      expect((await get('/api/health', anonymous)).statusCode).toBe(200);
     });
 
     it('reports semantic index status', async () => {
       expect((await get('/api/index/status')).json()).toEqual({ enabled: false });
       const withIndex = await buildServer(
-        { repos, auth, tools, events, scheduler, logger, indexModel: 'fake-embed' },
-        { allowedOrigins: [] },
+        { repos, auth, cipher, tools, events, scheduler, logger, indexModel: 'fake-embed' },
+        OPTIONS,
       );
       const res = await withIndex.inject({
         method: 'GET',
         url: '/api/index/status',
-        headers: { host: '127.0.0.1:4317' },
+        headers: { host: '127.0.0.1:4317', cookie },
       });
       expect(res.json()).toEqual({ enabled: true, model: 'fake-embed', indexed: 0, total: 2 });
       await withIndex.close();
@@ -501,24 +649,43 @@ describe.skipIf(!testDatabaseUrl)('HTTP API', () => {
         outboxPending: 0,
       });
       await post('/api/sync/now');
-      expect(scheduler.syncNow).toHaveBeenCalled();
+      expect(scheduler.syncNow).toHaveBeenCalledWith(account.id);
     });
 
-    it('streams events over SSE', async () => {
+    it("streams each browser its own account's events over SSE", async () => {
+      const other = await repos.accounts.upsert({ email: 'b@example.com', googleSub: 'b' });
       await app.listen({ host: '127.0.0.1', port: 0 });
       const { port } = app.server.address() as { port: number };
-      const res = await fetch(`http://127.0.0.1:${port}/api/events`, {
-        headers: { origin: ORIGIN },
-      });
-      expect(res.headers.get('content-type')).toBe('text/event-stream');
-      expect(res.headers.get('access-control-allow-origin')).toBe(ORIGIN);
-      const reader = res.body!.getReader();
+      const open = async (sid: string) => {
+        const res = await fetch(`http://127.0.0.1:${port}/api/events`, {
+          headers: { origin: ORIGIN, cookie: sid },
+        });
+        expect(res.headers.get('content-type')).toBe('text/event-stream');
+        expect(res.headers.get('access-control-allow-origin')).toBe(ORIGIN);
+        const reader = res.body!.getReader();
+        let text = '';
+        return {
+          until: async (needle: string) => {
+            while (!text.includes(needle))
+              text += new TextDecoder().decode((await reader.read()).value);
+            return text;
+          },
+          close: () => reader.cancel(),
+        };
+      };
+      const mine = await open(cookie);
+      const theirs = await open(await signIn(other.id));
+      await mine.until(': connected');
+      await theirs.until(': connected');
       events.emit('message.added', { accountId: account.id, messageIds: ['m9'] });
-      let text = '';
-      while (!text.includes('event: message.added'))
-        text += new TextDecoder().decode((await reader.read()).value);
-      expect(text).toContain(`data: {"accountId":"${account.id}","messageIds":["m9"]}`);
-      await reader.cancel();
+      events.emit('message.added', { accountId: other.id, messageIds: ['b1'] });
+      expect(await mine.until('m9')).toContain(
+        `data: {"accountId":"${account.id}","messageIds":["m9"]}`,
+      );
+      expect(await theirs.until('b1')).not.toContain('m9');
+      await mine.close();
+      await theirs.close();
+      expect((await fetch(`http://127.0.0.1:${port}/api/events`)).status).toBe(401);
     });
   });
 });

@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { extname, join } from 'node:path';
 import mammoth from 'mammoth';
 import readXlsxFile from 'read-excel-file/node';
@@ -125,6 +125,12 @@ export class ChatFileStore {
 
   get(id: string): Promise<ChatFile | undefined> {
     return this.repo.get(id);
+  }
+
+  /** Remove an account's uploads from disk (their rows go with the account). */
+  async deleteForAccount(accountId: string): Promise<void> {
+    for (const file of await this.repo.listForAccount(accountId))
+      await rm(file.storagePath, { force: true });
   }
 
   /** The model's view of a file: the bytes for images/PDFs, extracted text otherwise. */

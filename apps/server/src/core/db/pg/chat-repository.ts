@@ -354,4 +354,13 @@ export class PgChatFileRepository implements ChatFileRepository {
       .executeTakeFirst();
     return row && toFile(row);
   }
+
+  async listForAccount(accountId: string) {
+    const rows = await this.db
+      .selectFrom('chat_files')
+      .selectAll()
+      .where('account_id', '=', accountId)
+      .execute();
+    return rows.map(toFile);
+  }
 }

@@ -12,6 +12,11 @@ const EnvSchema = z.object({
     .url({ protocol: /^postgres(ql)?$/ })
     .default('postgres://ai_email:ai_email@localhost:5434/ai_email'),
   SERVER_PORT: z.coerce.number().int().min(1).max(65535).default(4317),
+  /** Where users open the app; Google redirects back to <APP_URL>/api/auth/callback. */
+  APP_URL: z
+    .url({ protocol: /^https?$/ })
+    .default('http://localhost:5173')
+    .transform((u) => new URL(u).origin),
   /** Extra browser origins allowed to call the API (the server's own origin is always allowed). */
   ALLOWED_ORIGINS: z
     .string()
@@ -43,6 +48,8 @@ export interface AppConfig {
   logLevel: 'trace' | 'debug' | 'info' | 'warn' | 'error' | 'fatal';
   databaseUrl: string;
   serverPort: number;
+  /** Origin users open the app at, e.g. http://localhost:5173 (no trailing slash). */
+  appUrl: string;
   allowedOrigins: string[];
   /** Root for local app files (logs, uploads). */
   dataDir: string;
@@ -72,6 +79,7 @@ export function parseConfig(env: Record<string, string | undefined>): AppConfig 
     logLevel: e.LOG_LEVEL,
     databaseUrl: e.DATABASE_URL,
     serverPort: e.SERVER_PORT,
+    appUrl: e.APP_URL,
     allowedOrigins: e.ALLOWED_ORIGINS,
     dataDir: e.APP_DATA_DIR,
     google: { clientId: e.GOOGLE_CLIENT_ID, clientSecret: e.GOOGLE_CLIENT_SECRET },

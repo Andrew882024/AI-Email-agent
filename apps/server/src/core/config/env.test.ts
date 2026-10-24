@@ -13,6 +13,7 @@ describe('parseConfig', () => {
       logLevel: 'info',
       databaseUrl: 'postgres://ai_email:ai_email@localhost:5434/ai_email',
       serverPort: 4317,
+      appUrl: 'http://localhost:5173',
       allowedOrigins: ['http://localhost:5173', 'http://127.0.0.1:5173'],
       dataDir: join(homedir(), '.ai-email-agent'),
       google: { clientId: 'id', clientSecret: 'secret' },
@@ -31,6 +32,13 @@ describe('parseConfig', () => {
 
   it('coerces SERVER_PORT', () => {
     expect(parseConfig({ ...base, SERVER_PORT: '8080' }).serverPort).toBe(8080);
+  });
+
+  it('keeps only the origin of APP_URL', () => {
+    expect(parseConfig({ ...base, APP_URL: 'https://mail.example.com/' }).appUrl).toBe(
+      'https://mail.example.com',
+    );
+    expect(() => parseConfig({ ...base, APP_URL: 'ftp://x' })).toThrow(/APP_URL/);
   });
 
   it('rejects missing Google credentials', () => {

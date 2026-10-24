@@ -10,10 +10,12 @@ import {
   GeminiProvider,
   MemoryService,
   AesGcmSecretCipher,
+  AUTH_CALLBACK_PATH,
   type AppConfig,
   type Db,
   type Logger,
   type Repositories,
+  type SecretCipher,
   ConfigError,
   createDb,
   createEmailTools,
@@ -29,7 +31,6 @@ import {
   GoogleOAuthService,
   MailboxService,
   MailSync,
-  openInSystemBrowser,
   OutboxWorker,
   SyncScheduler,
   TasksSync,
@@ -43,6 +44,8 @@ export interface Services {
   repos: Repositories;
   events: EventBus;
   auth: GoogleOAuthService;
+  /** Encrypts stored Google tokens and the short-lived sign-in cookie. */
+  cipher: SecretCipher;
   scheduler: SyncScheduler;
   tools: ToolRegistry;
   /** Embedding model of the semantic index, when indexing is on. */
@@ -72,9 +75,9 @@ export function createServices(config: AppConfig): Services {
   const auth = new GoogleOAuthService({
     clientId: config.google.clientId,
     clientSecret: config.google.clientSecret,
+    redirectUri: `${config.appUrl}${AUTH_CALLBACK_PATH}`,
     accounts: repos.accounts,
     tokens: new EncryptedTokenStore(repos.oauthTokens, cipher),
-    openExternal: openInSystemBrowser,
     logger,
   });
   const gateways = new GoogleGatewayProvider(auth, {
@@ -151,6 +154,7 @@ export function createServices(config: AppConfig): Services {
     repos,
     events,
     auth,
+    cipher,
     scheduler,
     tools,
     indexModel: indexer?.model,

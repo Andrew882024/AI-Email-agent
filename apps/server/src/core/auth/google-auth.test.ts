@@ -8,6 +8,7 @@ import { GOOGLE_SCOPES } from './scopes.js';
 import type { StoredRefreshToken, TokenStore } from './token-store.js';
 
 const CLIENT_ID = 'client.apps.googleusercontent.com';
+const REDIRECT_URI = 'http://localhost:5173/api/auth/callback';
 const GOOD_TOKENS: Credentials = {
   refresh_token: '1//refresh',
   access_token: 'access',
@@ -88,33 +89,34 @@ function setup(
     clients.push(client);
     return client;
   };
-  // Plays the user's browser: follows the consent URL straight to the redirect with a code.
-  const openedUrls: URL[] = [];
-  const openExternal = async (url: string) => {
-    const u = new URL(url);
-    openedUrls.push(u);
-    const redirect = new URL(u.searchParams.get('redirect_uri')!);
-    redirect.search = new URLSearchParams({
-      state: u.searchParams.get('state')!,
-      code: 'the-code',
-    }).toString();
-    await fetch(redirect);
-  };
   const service = new GoogleOAuthService({
     clientId: CLIENT_ID,
     clientSecret: 'secret',
+    redirectUri: REDIRECT_URI,
     ...stores,
-    openExternal,
     createClient,
-    timeoutMs: 5000,
   });
-  return { service, clients, openedUrls, ...stores };
+  return { service, clients, ...stores };
+}
+
+/** Plays the browser: goes to Google, comes back with a code, and the app finishes signing in. */
+async function signIn(service: GoogleOAuthService, consent?: boolean): Promise<Account> {
+  const request = await service.beginAuth({ consent });
+  const result = await service.finishAuth({ code: 'the-code', codeVerifier: request.codeVerifier });
+  if (!('account' in result)) throw new Error('consent required');
+  return result.account;
 }
 
 describe('GoogleOAuthService', () => {
   it('signs in with offline access + PKCE and persists the account and refresh token', async () => {
-    const { service, clients, openedUrls, accounts, tokens } = setup();
-    const account = await service.startAuth();
+    const { service, clients, accounts, tokens } = setup();
+    const request = await service.beginAuth({ consent: true });
+    const result = await service.finishAuth({
+      code: 'the-code',
+      codeVerifier: request.codeVerifier,
+    });
+    if (!('account' in result)) throw new Error('consent required');
+    const { account } = result;
 
     expect(account).toMatchObject({
       email: 'me@gmail.com',
@@ -127,30 +129,53 @@ describe('GoogleOAuthService', () => {
       scopes: GOOGLE_SCOPES,
     });
 
-    const params = openedUrls[0]!.searchParams;
+    const params = new URL(request.url).searchParams;
     expect(params.get('access_type')).toBe('offline');
     expect(params.get('prompt')).toBe('consent');
+    expect(params.get('state')).toBe(request.state);
     expect(params.get('code_challenge_method')).toBe('S256');
     expect(params.get('code_challenge')).toBeTruthy();
     expect(params.get('scope')?.split(' ')).toEqual(GOOGLE_SCOPES);
-    expect(params.get('redirect_uri')).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/oauth2callback$/);
+    expect(params.get('redirect_uri')).toBe(REDIRECT_URI);
 
-    expect(clients[0]!.getToken).toHaveBeenCalledWith({
+    expect(clients[1]!.getToken).toHaveBeenCalledWith({
       code: 'the-code',
-      codeVerifier: expect.any(String),
-      redirect_uri: params.get('redirect_uri'),
+      codeVerifier: request.codeVerifier,
+      redirect_uri: REDIRECT_URI,
     });
-    expect(clients[0]!.verifyIdToken).toHaveBeenCalledWith({
+    expect(clients[1]!.verifyIdToken).toHaveBeenCalledWith({
       idToken: 'id-token',
       audience: CLIENT_ID,
     });
     // The signed-in client is reused without another network round-trip.
-    expect(await service.getClient(account.id)).toBe(clients[0]);
+    expect(await service.getClient(account.id)).toBe(clients[1]);
+  });
+
+  it('lets a returning user just pick their account; asks for consent only without a token', async () => {
+    const noRefresh = { tokens: { ...GOOD_TOKENS, refresh_token: undefined } };
+    const request = await setup().service.beginAuth();
+    expect(new URL(request.url).searchParams.get('prompt')).toBe('select_account');
+
+    // Never consented (or the token is gone): Google gave no refresh token, so ask with consent.
+    const fresh = setup(noRefresh);
+    expect(await fresh.service.finishAuth({ code: 'the-code', codeVerifier: 'v' })).toEqual({
+      consentRequired: true,
+    });
+    expect(fresh.tokens.rows.size).toBe(0);
+
+    // Signed in before: the stored refresh token is kept.
+    const first = setup();
+    const account = await signIn(first.service, true);
+    const again = setup(noRefresh, { accounts: first.accounts, tokens: first.tokens });
+    expect(await again.service.finishAuth({ code: 'the-code', codeVerifier: 'v' })).toEqual({
+      account: expect.objectContaining({ id: account.id }),
+    });
+    expect(first.tokens.rows.get(account.id)?.refreshToken).toBe('1//refresh');
   });
 
   it('restores the session after a restart without signing in again', async () => {
     const first = setup();
-    const account = await first.service.startAuth();
+    const account = await signIn(first.service);
 
     const restarted = setup({}, { accounts: first.accounts, tokens: first.tokens });
     const client = await restarted.service.getClient(account.id);
@@ -158,27 +183,26 @@ describe('GoogleOAuthService', () => {
     expect(client.getAccessToken).toHaveBeenCalledOnce();
     expect(await restarted.service.getClient(account.id)).toBe(client);
     expect(restarted.clients).toHaveLength(1);
-    expect(restarted.openedUrls).toHaveLength(0);
   });
 
   it('refuses a sign-in where permissions were unticked', async () => {
     const scope = GOOGLE_SCOPES.filter((s) => !s.endsWith('gmail.modify')).join(' ');
     const { service, accounts, tokens } = setup({ tokens: { ...GOOD_TOKENS, scope } });
-    await expect(service.startAuth()).rejects.toThrow(AuthFlowError);
-    await expect(setup({ tokens: { ...GOOD_TOKENS, scope } }).service.startAuth()).rejects.toThrow(
+    await expect(signIn(service)).rejects.toThrow(AuthFlowError);
+    await expect(signIn(setup({ tokens: { ...GOOD_TOKENS, scope } }).service)).rejects.toThrow(
       /missing: .*gmail\.modify/,
     );
     expect(accounts.rows.size + tokens.rows.size).toBe(0);
   });
 
-  it('refuses a sign-in without a refresh token', async () => {
-    const { service } = setup({ tokens: { ...GOOD_TOKENS, refresh_token: undefined } });
-    await expect(service.startAuth()).rejects.toThrow('did not return a refresh token');
+  it('refuses a sign-in without an ID token', async () => {
+    const { service } = setup({ tokens: { ...GOOD_TOKENS, id_token: undefined } });
+    await expect(signIn(service)).rejects.toThrow('did not return an ID token');
   });
 
   it('asks for reconnection and forgets the token when Google says invalid_grant', async () => {
     const first = setup();
-    const account = await first.service.startAuth();
+    const account = await signIn(first.service);
     const restarted = setup(
       { accessTokenError: invalidGrant },
       { accounts: first.accounts, tokens: first.tokens },
@@ -193,7 +217,7 @@ describe('GoogleOAuthService', () => {
 
   it('keeps the token on transient errors and retries on the next call', async () => {
     const first = setup();
-    const account = await first.service.startAuth();
+    const account = await signIn(first.service);
     let offline = true;
     const restarted = setup(
       {
@@ -217,20 +241,20 @@ describe('GoogleOAuthService', () => {
   it('revokes at Google and deletes locally, even if revocation fails', async () => {
     for (const revokeError of [undefined, new Error('offline')]) {
       const { service, tokens } = setup({ revokeError });
-      const account = await service.startAuth();
+      const account = await signIn(service);
       await service.revoke(account.id);
       expect(tokens.rows.size).toBe(0);
       await expect(service.getClient(account.id)).rejects.toBeInstanceOf(ReauthRequiredError);
     }
     const { service, clients } = setup();
-    const account = await service.startAuth();
+    const account = await signIn(service);
     await service.revoke(account.id);
     expect(clients.at(-1)!.revokeToken).toHaveBeenCalledWith('1//refresh');
   });
 
   it('invalidate() drops the cached client and the stored token', async () => {
     const { service, tokens } = setup();
-    const account = await service.startAuth();
+    const account = await signIn(service);
     await service.invalidate(account.id);
     expect(tokens.rows.size).toBe(0);
     await expect(service.getClient(account.id)).rejects.toBeInstanceOf(ReauthRequiredError);
@@ -238,8 +262,8 @@ describe('GoogleOAuthService', () => {
 
   it('persists a rotated refresh token', async () => {
     const { service, clients, tokens } = setup();
-    const account = await service.startAuth();
-    clients[0]!.emit('tokens', { refresh_token: '1//rotated', access_token: 'new' });
+    const account = await signIn(service);
+    clients.at(-1)!.emit('tokens', { refresh_token: '1//rotated', access_token: 'new' });
     await vi.waitFor(() => expect(tokens.rows.get(account.id)?.refreshToken).toBe('1//rotated'));
     expect(tokens.rows.get(account.id)?.scopes).toEqual(GOOGLE_SCOPES);
   });

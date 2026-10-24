@@ -3,6 +3,7 @@ import {
   AlertTriangle,
   Check,
   LogOut,
+  Trash2,
   Mail,
   MessageSquare,
   RefreshCw,
@@ -11,9 +12,9 @@ import {
 } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 import { showList } from '../../router/mail-params';
-import { useAuthStatus, useLogout } from '../../state/auth';
+import { useAuthStatus, useDeleteAccount, useLogout } from '../../state/auth';
 import { useSyncNow, useSyncStatus } from '../../state/sync';
-import { useChatPanel } from '../../state/ui';
+import { useChatPanel, useToast } from '../../state/ui';
 import { IconButton } from '../ui/IconButton';
 import { Spinner } from '../ui/Spinner';
 
@@ -57,6 +58,8 @@ export function TopBar({ search }: { search: string }) {
   }
   const refresh = useSyncNow();
   const logout = useLogout();
+  const deleteAccount = useDeleteAccount();
+  const toast = useToast();
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
@@ -134,6 +137,23 @@ export function TopBar({ search }: { search: string }) {
                   className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-sm outline-none hover:bg-gray-100"
                 >
                   <LogOut className="h-4 w-4" /> Sign out
+                </Menu.Item>
+                <Menu.Item
+                  onSelect={() => {
+                    const sure = window.confirm(
+                      `Delete your AI Email Agent account for ${account.email}?\n\n` +
+                        'This erases everything the app keeps for it (its copy of your mail, chats, ' +
+                        'memory, workflows and uploaded files) and revokes its Google access. ' +
+                        'Your Gmail, Google Tasks and Drive files are not touched.',
+                    );
+                    if (sure)
+                      deleteAccount.mutate(undefined, {
+                        onError: (err) => toast(err.message, 'error'),
+                      });
+                  }}
+                  className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-sm text-red-700 outline-none hover:bg-red-50"
+                >
+                  <Trash2 className="h-4 w-4" /> Delete account…
                 </Menu.Item>
               </Menu.Content>
             </Menu.Portal>

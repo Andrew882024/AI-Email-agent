@@ -21,6 +21,7 @@ const APP_TABLES = [
   'messages',
   'oauth_tokens',
   'outbox_ops',
+  'sessions',
   'sync_state',
   'threads',
   'todos',
@@ -53,18 +54,24 @@ describe.skipIf(!testDatabaseUrl)('migrator', () => {
       ['0004_chat', 'Success'],
       ['0005_workflows', 'Success'],
       ['0006_document_workflows', 'Success'],
+      ['0007_sessions', 'Success'],
     ]);
     expect(await tables()).toEqual(APP_TABLES);
 
     expect(await migrateToLatest(t.db)).toEqual([]);
 
+    expect((await migrateDown(t.db)).map((r) => r.migrationName)).toEqual(['0007_sessions']);
+    const BEFORE_SESSIONS = APP_TABLES.filter((name) => name !== 'sessions');
+    expect(await tables()).toEqual(BEFORE_SESSIONS);
     expect((await migrateDown(t.db)).map((r) => r.migrationName)).toEqual([
       '0006_document_workflows',
     ]);
-    expect(await tables()).toEqual(APP_TABLES);
+    expect(await tables()).toEqual(BEFORE_SESSIONS);
     const workflowTables = ['workflow_decisions', 'workflows'];
     expect((await migrateDown(t.db)).map((r) => r.migrationName)).toEqual(['0005_workflows']);
-    expect(await tables()).toEqual(APP_TABLES.filter((name) => !workflowTables.includes(name)));
+    expect(await tables()).toEqual(
+      BEFORE_SESSIONS.filter((name) => !workflowTables.includes(name)),
+    );
     const chatTables = [
       ...workflowTables,
       'chat_files',
@@ -74,15 +81,15 @@ describe.skipIf(!testDatabaseUrl)('migrator', () => {
       'tool_runs',
     ];
     expect((await migrateDown(t.db)).map((r) => r.migrationName)).toEqual(['0004_chat']);
-    expect(await tables()).toEqual(APP_TABLES.filter((name) => !chatTables.includes(name)));
+    expect(await tables()).toEqual(BEFORE_SESSIONS.filter((name) => !chatTables.includes(name)));
     expect((await migrateDown(t.db)).map((r) => r.migrationName)).toEqual(['0003_rag']);
     expect(await tables()).toEqual(
-      APP_TABLES.filter((name) => name !== 'email_embeddings' && !chatTables.includes(name)),
+      BEFORE_SESSIONS.filter((name) => name !== 'email_embeddings' && !chatTables.includes(name)),
     );
     const down = await migrateDown(t.db);
     expect(down.map((r) => [r.migrationName, r.direction])).toEqual([['0002_sync', 'Down']]);
     expect(await tables()).toEqual(
-      APP_TABLES.filter(
+      BEFORE_SESSIONS.filter(
         (name) => !['sync_state', 'email_embeddings', ...chatTables].includes(name),
       ),
     );

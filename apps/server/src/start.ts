@@ -28,7 +28,10 @@ export async function startServer(config: AppConfig): Promise<RunningServer> {
   const services = createServices(config);
   try {
     await migrateToLatest(services.db);
-    const app = await buildServer(services, { allowedOrigins: config.allowedOrigins });
+    const app = await buildServer(services, {
+      appUrl: config.appUrl,
+      allowedOrigins: config.allowedOrigins,
+    });
     await app.listen({ host: '127.0.0.1', port: config.serverPort });
     await services.scheduler.start();
     const { port } = app.server.address() as { port: number };

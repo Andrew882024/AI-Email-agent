@@ -417,6 +417,44 @@ describe.skipIf(!testDatabaseUrl)('sync', () => {
       }
     });
 
+    it("runs each account on its own, so one account's long sync doesn't hold up another", async () => {
+      const other = (await repos.accounts.upsert({ email: 'b@example.com', googleSub: 'b' })).id;
+      const calls: string[] = [];
+      let releaseFirst!: () => void;
+      const firstStuck = new Promise<void>((resolve) => (releaseFirst = resolve));
+      const scheduler = new SyncScheduler({
+        repos,
+        auth: { isConnected: async () => true },
+        mailSync: {
+          sync: async (id: string) => {
+            calls.push(id);
+            if (id === accountId) await firstStuck; // e.g. a first full sync of a big mailbox
+          },
+        } as unknown as MailSync,
+        tasksSync: { sync: async () => 0 } as unknown as TasksSync,
+        outbox: { drain: async () => 0 } as unknown as OutboxWorker,
+        events,
+        logger,
+        mailIntervalMs: 20,
+      });
+      await scheduler.start();
+      try {
+        await expect
+          .poll(() => calls.filter((id) => id === other).length, { timeout: 2000 })
+          .toBeGreaterThan(3);
+        expect(calls.filter((id) => id === accountId)).toHaveLength(1);
+
+        await scheduler.removeAccount(other);
+        const after = calls.length;
+        scheduler.syncNow(other);
+        await new Promise((r) => setTimeout(r, 100));
+        expect(calls.length).toBe(after);
+      } finally {
+        releaseFirst();
+        await scheduler.stop();
+      }
+    });
+
     it('reports accounts that need reconnecting without stopping', async () => {
       google.failWith = new ReauthRequiredError(accountId, 'expired');
       const scheduler = new SyncScheduler({

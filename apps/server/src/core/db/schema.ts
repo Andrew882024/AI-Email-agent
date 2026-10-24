@@ -25,6 +25,15 @@ export interface OAuthTokensTable {
   updated_at: Generated<Date>;
 }
 
+export interface SessionsTable {
+  /** SHA-256 of the cookie token. */
+  id: string;
+  account_id: string;
+  created_at: Generated<Date>;
+  last_seen_at: Generated<Date>;
+  expires_at: Date;
+}
+
 export interface LabelsTable {
   account_id: string;
   id: string;
@@ -235,6 +244,7 @@ export interface WorkflowDecisionsTable {
 export interface Database {
   accounts: AccountsTable;
   oauth_tokens: OAuthTokensTable;
+  sessions: SessionsTable;
   labels: LabelsTable;
   threads: ThreadsTable;
   messages: MessagesTable;

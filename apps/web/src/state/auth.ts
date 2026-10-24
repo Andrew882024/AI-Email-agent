@@ -1,5 +1,5 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { getAuthStatus, login, logout } from '../api/auth';
+import { useMutation, useQuery } from '@tanstack/react-query';
+import { deleteAccount, getAuthStatus, logout } from '../api/auth';
 import { useUi } from './store';
 
 export function useAuthStatus() {
@@ -8,7 +8,7 @@ export function useAuthStatus() {
 
 export type Session = 'loading' | 'signed_in' | 'signed_out';
 
-/** Signed in = a Google account is connected and its sign-in still works. */
+/** Signed in = this browser has a session and the account's Google access still works. */
 export function useSession(): Session {
   const auth = useAuthStatus();
   const reauthRequired = useUi((s) => s.reauthRequired);
@@ -17,21 +17,16 @@ export function useSession(): Session {
   return ok ? 'signed_in' : 'signed_out';
 }
 
-/** Sign in with Google (the browser flow), then reload everything. */
-export function useLogin() {
-  const qc = useQueryClient();
-  const setReauthRequired = useUi((s) => s.setReauthRequired);
-  return useMutation({
-    mutationFn: login,
-    onSuccess: () => {
-      setReauthRequired(false);
-      void qc.invalidateQueries();
-    },
-  });
+// After signing out or deleting the account, the page is reloaded on /login so nothing of this
+// account (cached mail, open drafts, chat) stays in memory for whoever uses the browser next.
+const reloadOnLogin = () => window.location.assign('/login');
+
+/** Sign this browser out. */
+export function useLogout() {
+  return useMutation({ mutationFn: logout, onSuccess: reloadOnLogin });
 }
 
-/** Sign out (revokes Google access), then reload everything. */
-export function useLogout() {
-  const qc = useQueryClient();
-  return useMutation({ mutationFn: logout, onSuccess: () => void qc.invalidateQueries() });
+/** Delete the account and everything the app keeps for it. */
+export function useDeleteAccount() {
+  return useMutation({ mutationFn: deleteAccount, onSuccess: reloadOnLogin });
 }

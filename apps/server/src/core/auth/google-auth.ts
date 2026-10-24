@@ -4,17 +4,31 @@ import type { AccountRepository } from '../db/repositories.js';
 import type { Account } from '../domain/types.js';
 import type { Logger } from '../logging/system-logger.js';
 import { AuthFlowError, isInvalidGrantError, ReauthRequiredError } from './errors.js';
-import { startLoopbackReceiver } from './loopback.js';
 import { GOOGLE_SCOPES, REQUIRED_API_SCOPES } from './scopes.js';
 import type { TokenStore } from './token-store.js';
 
-/** Opens a URL in the user's browser. Injected so tests can capture it. */
-export type OpenExternal = (url: string) => Promise<void>;
+/** Where Google sends the browser back to, under the app's URL. */
+export const AUTH_CALLBACK_PATH = '/api/auth/callback';
+
+/** A sign-in in progress: send the browser to `url`; keep `state` and `codeVerifier` for the callback. */
+export interface AuthRequest {
+  url: string;
+  state: string;
+  codeVerifier: string;
+}
+
+/** How a sign-in ended: the account, or Google must be asked again with the consent screen. */
+export type AuthResult = { account: Account } | { consentRequired: true };
 
 /** Everything the rest of the app needs from Google sign-in. */
 export interface GoogleAuthProvider {
-  /** Run the interactive consent flow; persists the account and its refresh token. */
-  startAuth(options?: { signal?: AbortSignal }): Promise<Account>;
+  /**
+   * Start signing in. Without `consent`, someone who already granted access just picks their
+   * account; `consent` shows the permission screen (and so always yields a refresh token).
+   */
+  beginAuth(options?: { consent?: boolean }): Promise<AuthRequest>;
+  /** Finish with the code Google redirected back with; persists the account and its refresh token. */
+  finishAuth(input: { code: string; codeVerifier: string }): Promise<AuthResult>;
   /**
    * Authorized client for Google API calls, restored from the stored refresh token.
    * Throws ReauthRequiredError when there is no usable token.
@@ -26,92 +40,90 @@ export interface GoogleAuthProvider {
    * getClient() asks for reconnection instead of retrying a dead token.
    */
   invalidate(accountId: string): Promise<void>;
-  /** Sign out: revoke the grant at Google (best effort) and delete the local token. Keeps mail data. */
+  /** Revoke the grant at Google (best effort) and delete the stored token. Keeps mail data. */
   revoke(accountId: string): Promise<void>;
 }
 
 export interface GoogleOAuthServiceOptions {
   clientId: string;
   clientSecret: string;
+  /** Where Google sends the browser back to, e.g. http://localhost:5173/api/auth/callback. */
+  redirectUri: string;
   accounts: AccountRepository;
   tokens: TokenStore;
-  openExternal: OpenExternal;
   logger?: Logger;
-  /** How long to wait for the user to finish in the browser. Default 5 minutes. */
-  timeoutMs?: number;
   /** Test seam. */
   createClient?: () => OAuth2Client;
 }
 
 /**
- * Desktop OAuth: system browser + loopback redirect + PKCE (RFC 8252), offline access so the
- * refresh token is kept and the user signs in once.
+ * Web OAuth (authorization code + PKCE) with offline access, so the refresh token is kept and
+ * background sync runs while the user is away.
  */
 export class GoogleOAuthService implements GoogleAuthProvider {
   private readonly clients = new Map<string, Promise<OAuth2Client>>();
 
   constructor(private readonly options: GoogleOAuthServiceOptions) {}
 
-  async startAuth({ signal }: { signal?: AbortSignal } = {}): Promise<Account> {
+  async beginAuth({ consent = false }: { consent?: boolean } = {}): Promise<AuthRequest> {
     const state = randomBytes(16).toString('base64url');
-    const receiver = await startLoopbackReceiver(state);
-    try {
-      const client = this.newClient();
-      const { codeVerifier, codeChallenge } = await client.generateCodeVerifierAsync();
-      const authUrl = client.generateAuthUrl({
-        access_type: 'offline',
-        prompt: 'consent', // always issue a refresh token, even on re-consent
-        scope: GOOGLE_SCOPES,
-        state,
-        redirect_uri: receiver.redirectUri,
-        code_challenge: codeChallenge,
-        code_challenge_method: CodeChallengeMethod.S256,
-      });
-      await this.options.openExternal(authUrl);
-      const code = await receiver.waitForCode({
-        timeoutMs: this.options.timeoutMs ?? 5 * 60_000,
-        signal,
-      });
+    const client = this.newClient();
+    const { codeVerifier, codeChallenge } = await client.generateCodeVerifierAsync();
+    const url = client.generateAuthUrl({
+      access_type: 'offline',
+      prompt: consent ? 'consent' : 'select_account',
+      scope: GOOGLE_SCOPES,
+      state,
+      redirect_uri: this.options.redirectUri,
+      code_challenge: codeChallenge,
+      code_challenge_method: CodeChallengeMethod.S256,
+    });
+    return { url, state, codeVerifier: codeVerifier! };
+  }
 
-      const { tokens } = await client.getToken({
-        code,
-        codeVerifier,
-        redirect_uri: receiver.redirectUri,
-      });
-      const granted = tokens.scope?.split(' ') ?? [];
-      const missing = REQUIRED_API_SCOPES.filter((s) => !granted.includes(s));
-      if (missing.length > 0) {
-        throw new AuthFlowError(
-          `Not all permissions were granted (missing: ${missing.join(', ')}). ` +
-            'Sign in again and keep every box checked.',
-        );
-      }
-      if (!tokens.refresh_token) throw new AuthFlowError('Google did not return a refresh token');
-      if (!tokens.id_token) throw new AuthFlowError('Google did not return an ID token');
-
-      const ticket = await client.verifyIdToken({
-        idToken: tokens.id_token,
-        audience: this.options.clientId,
-      });
-      const profile = ticket.getPayload();
-      if (!profile?.email) throw new AuthFlowError('Google profile has no email address');
-
-      const account = await this.options.accounts.upsert({
-        email: profile.email,
-        googleSub: profile.sub,
-        displayName: profile.name,
-      });
-      await this.options.tokens.save(account.id, {
-        refreshToken: tokens.refresh_token,
-        scopes: granted,
-      });
-      client.setCredentials(tokens);
-      this.watchRotation(account.id, client, granted);
-      this.clients.set(account.id, Promise.resolve(client));
-      return account;
-    } finally {
-      await receiver.close();
+  async finishAuth({ code, codeVerifier }: { code: string; codeVerifier: string }) {
+    const client = this.newClient();
+    const { tokens } = await client.getToken({
+      code,
+      codeVerifier,
+      redirect_uri: this.options.redirectUri,
+    });
+    const granted = tokens.scope?.split(' ') ?? [];
+    const missing = REQUIRED_API_SCOPES.filter((s) => !granted.includes(s));
+    if (missing.length > 0) {
+      throw new AuthFlowError(
+        `Not all permissions were granted (missing: ${missing.join(', ')}). ` +
+          'Sign in again and keep every box checked.',
+      );
     }
+    if (!tokens.id_token) throw new AuthFlowError('Google did not return an ID token');
+
+    const ticket = await client.verifyIdToken({
+      idToken: tokens.id_token,
+      audience: this.options.clientId,
+    });
+    const profile = ticket.getPayload();
+    if (!profile?.email) throw new AuthFlowError('Google profile has no email address');
+
+    const account = await this.options.accounts.upsert({
+      email: profile.email,
+      googleSub: profile.sub,
+      displayName: profile.name,
+    });
+    // Google only issues a refresh token on the consent screen. A returning user who skipped it
+    // keeps the stored one; without either, they must see the consent screen.
+    if (!tokens.refresh_token) {
+      if (!(await this.isConnected(account.id))) return { consentRequired: true as const };
+      return { account };
+    }
+    await this.options.tokens.save(account.id, {
+      refreshToken: tokens.refresh_token,
+      scopes: granted,
+    });
+    client.setCredentials(tokens);
+    this.watchRotation(account.id, client, granted);
+    this.clients.set(account.id, Promise.resolve(client));
+    return { account };
   }
 
   getClient(accountId: string): Promise<OAuth2Client> {

@@ -7,6 +7,7 @@ import { PgLabelRepository } from './label-repository.js';
 import { PgMessageRepository } from './message-repository.js';
 import { PgOAuthTokenRepository } from './oauth-token-repository.js';
 import { PgOutboxRepository } from './outbox-repository.js';
+import { PgSessionRepository } from './session-repository.js';
 import { PgSyncStateRepository } from './sync-state-repository.js';
 import { PgVectorStore } from './vector-store.js';
 import { PgWorkflowRepository } from './workflow-repository.js';
@@ -19,6 +20,7 @@ export function createPgRepositories(db: Db): Repositories {
   return {
     accounts: new PgAccountRepository(db),
     oauthTokens: new PgOAuthTokenRepository(db),
+    sessions: new PgSessionRepository(db),
     labels: new PgLabelRepository(db),
     messages: new PgMessageRepository(db),
     todos: new PgTodoRepository(db),

@@ -65,4 +65,8 @@ export class PgActionLogRepository implements ActionLogRepository {
       ...(rows.length > limit && last && { nextCursor: encodeCursor([last.id]) }),
     };
   }
+
+  async deleteForAccount(accountId: string) {
+    await this.db.deleteFrom('action_logs').where('account_id', '=', accountId).execute();
+  }
 }

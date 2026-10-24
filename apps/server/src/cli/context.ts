@@ -1,7 +1,6 @@
 // Wires the core services for command-line tools (the server will have its own composition root).
 import { join } from 'node:path';
-import { GoogleOAuthService } from '../core/auth/google-auth.js';
-import { openInSystemBrowser } from '../core/auth/open-external.js';
+import { AUTH_CALLBACK_PATH, GoogleOAuthService } from '../core/auth/google-auth.js';
 import { AesGcmSecretCipher } from '../core/auth/secret-cipher.js';
 import { EncryptedTokenStore } from '../core/auth/token-store.js';
 import { loadConfig } from '../core/config/env.js';
@@ -35,9 +34,9 @@ export function createCliContext() {
   const auth = new GoogleOAuthService({
     clientId: config.google.clientId,
     clientSecret: config.google.clientSecret,
+    redirectUri: `${config.appUrl}${AUTH_CALLBACK_PATH}`,
     accounts: repos.accounts,
     tokens: new EncryptedTokenStore(repos.oauthTokens, new AesGcmSecretCipher(config.appSecretKey)),
-    openExternal: openInSystemBrowser,
     logger,
   });
   const gateways = new GoogleGatewayProvider(auth, {
