@@ -1,4 +1,4 @@
-import type { Label } from '../../api/types';
+import type { Label } from '../../api/mail';
 
 export function LabelChip({ label }: { label: Label }) {
   return (

@@ -1,5 +1,5 @@
 // Pure helpers that predict the effect of a label-changing tool, so the UI updates instantly.
-import type { Message, ThreadSummary, View } from './types';
+import type { Message, ThreadSummary, View } from '../api/mail';
 
 export interface LabelChange {
   messageIds: string[];

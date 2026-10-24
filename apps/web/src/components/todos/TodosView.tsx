@@ -1,6 +1,6 @@
 import { CheckCircle2, Circle, Trash2 } from 'lucide-react';
 import { useState } from 'react';
-import { useTodos, useTool } from '../../api/queries';
+import { useMailTool, useTodos } from '../../state/mail';
 import { displayName, shortDate } from '../../utils/format';
 import { EmptyState } from '../ui/EmptyState';
 import { IconButton } from '../ui/IconButton';
@@ -9,7 +9,7 @@ import { openThread } from '../../router/mail-params';
 
 export function TodosView() {
   const todos = useTodos();
-  const tool = useTool();
+  const tool = useMailTool();
   const [tab, setTab] = useState<'needsAction' | 'completed'>('needsAction');
   const shown = (todos.data ?? []).filter((t) => t.status === tab);
 

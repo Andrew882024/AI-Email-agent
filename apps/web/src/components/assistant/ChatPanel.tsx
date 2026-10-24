@@ -1,5 +1,4 @@
 import * as Menu from '@radix-ui/react-dropdown-menu';
-import { useQueryClient } from '@tanstack/react-query';
 import {
   Bot,
   Brain,
@@ -23,16 +22,22 @@ import {
   type AgentEvent,
   type ChatMessage,
   type EmailDraft,
+  resolveChatAction,
+  sendChatMessage,
   type StoredPart,
-  streamTurn,
   type ToolRun,
   uploadChatFile,
+} from '../../api/chat';
+import { ApiError } from '../../api/client';
+import {
   useChatSession,
   useChatSessions,
-} from '../../api/chat';
-import { api, ApiError } from '../../api/client';
+  useCreateChatSession,
+  useDeleteChatSession,
+  useRefreshAfterTurn,
+} from '../../state/chat';
+import { useChatPanel, useComposeActions, useToast } from '../../state/ui';
 import { fileSize } from '../../utils/format';
-import { useUi } from '../../store';
 import { MemoryDialog } from './MemoryDialog';
 import { WorkflowsDialog } from './WorkflowsDialog';
 import { IconButton } from '../ui/IconButton';
@@ -178,7 +183,7 @@ function DraftChip({ draft }: { draft: EmailDraft }) {
 }
 
 function useOpenDraft() {
-  const openCompose = useUi((s) => s.openCompose);
+  const openCompose = useComposeActions().open;
   return (draft: EmailDraft) =>
     openCompose({
       mode: draft.mode,
@@ -302,11 +307,11 @@ interface LiveTurn {
 
 /** Docked assistant: ask about your mail, have it act on emails, draft replies. */
 export function ChatPanel() {
-  const toggleChat = useUi((s) => s.toggleChat);
-  const sessionId = useUi((s) => s.chatSessionId);
-  const setSession = useUi((s) => s.setChatSession);
-  const toast = useUi((s) => s.toast);
-  const qc = useQueryClient();
+  const { toggle: toggleChat, sessionId, setSessionId: setSession } = useChatPanel();
+  const toast = useToast();
+  const createSession = useCreateChatSession();
+  const deleteSession = useDeleteChatSession();
+  const refreshAfterTurn = useRefreshAfterTurn();
   const sessions = useChatSessions();
   const detail = useChatSession(sessionId);
   const openDraft = useOpenDraft();
@@ -335,84 +340,80 @@ export function ChatPanel() {
   const unavailable = sessions.error instanceof ApiError && sessions.error.status === 503;
   const awaiting = detail.data?.awaiting ?? [];
 
-  const run = async (url: string, body: unknown, user?: LiveTurn['user']) => {
+  /** Run one streamed assistant turn (a message, or a decision on a waiting action). */
+  const run = async (
+    turn: (onEvent: (event: AgentEvent) => void, signal: AbortSignal) => Promise<void>,
+    user?: LiveTurn['user'],
+  ) => {
     setBusy(true);
     setLive({ user, text: '', tools: [], approvals: [], drafts: [] });
     abort.current = new AbortController();
     try {
-      await streamTurn(
-        url,
-        body,
-        (event) => {
-          if (event.type === 'draft') openDraft(event.draft);
-          setLive((prev) => {
-            if (!prev) return prev;
-            switch (event.type) {
-              case 'text':
-                return { ...prev, text: prev.text + event.text };
-              case 'tool_call':
-                return prev.tools.some((t) => t.runId === event.runId)
-                  ? prev
-                  : {
-                      ...prev,
-                      tools: [
-                        ...prev.tools,
-                        {
-                          runId: event.runId,
-                          name: event.name,
-                          args: event.args,
-                          state: 'running',
-                        },
-                      ],
-                    };
-              case 'tool_result': {
-                const known = prev.tools.some((t) => t.runId === event.runId);
-                const tool = {
-                  runId: event.runId,
-                  name: event.name,
-                  args: {},
-                  state: event.ok ? ('ok' as const) : ('error' as const),
-                  detail: event.summary,
-                };
-                return {
-                  ...prev,
-                  tools: known
-                    ? prev.tools.map((t) =>
-                        t.runId === event.runId
-                          ? { ...t, state: tool.state, detail: tool.detail }
-                          : t,
-                      )
-                    : [...prev.tools, tool],
-                };
-              }
-              case 'approval_required':
-                return {
-                  ...prev,
-                  approvals: [...prev.approvals, event],
-                  tools: prev.tools.map((t) =>
-                    t.runId === event.runId ? { ...t, state: 'waiting' } : t,
-                  ),
-                };
-              case 'draft':
-                return { ...prev, drafts: [...prev.drafts, event.draft] };
-              case 'error':
-                return { ...prev, error: event.message };
-              default:
-                return prev;
+      await turn((event) => {
+        if (event.type === 'draft') openDraft(event.draft);
+        setLive((prev) => {
+          if (!prev) return prev;
+          switch (event.type) {
+            case 'text':
+              return { ...prev, text: prev.text + event.text };
+            case 'tool_call':
+              return prev.tools.some((t) => t.runId === event.runId)
+                ? prev
+                : {
+                    ...prev,
+                    tools: [
+                      ...prev.tools,
+                      {
+                        runId: event.runId,
+                        name: event.name,
+                        args: event.args,
+                        state: 'running',
+                      },
+                    ],
+                  };
+            case 'tool_result': {
+              const known = prev.tools.some((t) => t.runId === event.runId);
+              const tool = {
+                runId: event.runId,
+                name: event.name,
+                args: {},
+                state: event.ok ? ('ok' as const) : ('error' as const),
+                detail: event.summary,
+              };
+              return {
+                ...prev,
+                tools: known
+                  ? prev.tools.map((t) =>
+                      t.runId === event.runId
+                        ? { ...t, state: tool.state, detail: tool.detail }
+                        : t,
+                    )
+                  : [...prev.tools, tool],
+              };
             }
-          });
-        },
-        abort.current.signal,
-      );
+            case 'approval_required':
+              return {
+                ...prev,
+                approvals: [...prev.approvals, event],
+                tools: prev.tools.map((t) =>
+                  t.runId === event.runId ? { ...t, state: 'waiting' } : t,
+                ),
+              };
+            case 'draft':
+              return { ...prev, drafts: [...prev.drafts, event.draft] };
+            case 'error':
+              return { ...prev, error: event.message };
+            default:
+              return prev;
+          }
+        });
+      }, abort.current.signal);
     } catch (err) {
       if (!(err instanceof DOMException && err.name === 'AbortError'))
         toast(err instanceof Error ? err.message : String(err), 'error');
     } finally {
       setBusy(false);
-      await qc.invalidateQueries({ queryKey: ['chat'] });
-      void qc.invalidateQueries({ queryKey: ['threads'] });
-      void qc.invalidateQueries({ queryKey: ['labels'] });
-      void qc.invalidateQueries({ queryKey: ['todos'] });
+      await refreshAfterTurn();
       setLive((prev) =>
         prev?.error ? { ...prev, user: undefined, text: '', tools: [] } : undefined,
       );
@@ -423,21 +424,23 @@ export function ChatPanel() {
     if (busy || (!text.trim() && files.length === 0)) return;
     let id = sessionId;
     if (!id) {
-      id = (await api<{ id: string }>('/api/chat/sessions', { method: 'POST', body: {} })).id;
+      id = (await createSession.mutateAsync()).id;
       setSession(id);
     }
     const sent = files;
     setInput('');
     setFiles([]);
+    const sessionForTurn = id;
     await run(
-      `/api/chat/sessions/${id}/messages`,
-      { text, fileIds: sent.map((f) => f.id) },
+      (onEvent, signal) =>
+        sendChatMessage(sessionForTurn, { text, fileIds: sent.map((f) => f.id) }, onEvent, signal),
       { text, files: sent.map((f) => f.filename) },
     );
   };
 
   const decide = (runId: string, approve: boolean) => {
-    if (sessionId) void run(`/api/chat/sessions/${sessionId}/actions/${runId}`, { approve });
+    if (sessionId)
+      void run((onEvent, signal) => resolveChatAction(sessionId, runId, approve, onEvent, signal));
   };
 
   const attach = async (list: FileList | null) => {
@@ -458,19 +461,15 @@ export function ChatPanel() {
   const newChat = () => {
     setSession(undefined);
     setLive(undefined);
-    void api<{ id: string }>('/api/chat/sessions', { method: 'POST', body: {} }).then(
-      (s) => {
-        setSession(s.id);
-        void qc.invalidateQueries({ queryKey: ['chat', 'sessions'] });
-      },
-      (err: unknown) => toast(err instanceof Error ? err.message : String(err), 'error'),
-    );
+    createSession.mutate(undefined, {
+      onSuccess: (s) => setSession(s.id),
+      onError: (err) => toast(err.message, 'error'),
+    });
   };
 
   const remove = async (id: string) => {
-    await api(`/api/chat/sessions/${id}`, { method: 'DELETE' }).catch(() => undefined);
+    await deleteSession.mutateAsync(id).catch(() => undefined);
     if (id === sessionId) setSession(undefined);
-    void qc.invalidateQueries({ queryKey: ['chat', 'sessions'] });
   };
 
   const onKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {

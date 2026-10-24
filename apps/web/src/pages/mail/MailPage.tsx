@@ -1,6 +1,4 @@
 import { useEffect, useMemo } from 'react';
-import { useServerEvents } from '../../api/events';
-import { type MailboxQuery, useLabels } from '../../api/queries';
 import { ChatPanel } from '../../components/assistant/ChatPanel';
 import { ComposeDock } from '../../components/compose/ComposeDock';
 import { Sidebar } from '../../components/layout/Sidebar';
@@ -11,7 +9,9 @@ import { ThreadView } from '../../components/thread/ThreadView';
 import { TodosView } from '../../components/todos/TodosView';
 import { Spinner } from '../../components/ui/Spinner';
 import { type MailParams, showList } from '../../router/mail-params';
-import { useUi } from '../../store';
+import { type MailboxQuery, useLabels } from '../../state/mail';
+import { useServerEvents } from '../../state/sync';
+import { useChatPanel, useSelection } from '../../state/ui';
 
 /**
  * The mail page (/mail). Its parameters come from the URL (parsed in router/routes.tsx): `list` and
@@ -21,9 +21,9 @@ import { useUi } from '../../store';
 export function MailPage({ params }: { params: MailParams }) {
   const { list, page, threadId } = params;
   const labels = useLabels();
-  const chatOpen = useUi((s) => s.chatOpen);
-  const setSelected = useUi((s) => s.setSelected);
-  useServerEvents(true);
+  const chatOpen = useChatPanel().open;
+  const setSelected = useSelection().set;
+  useServerEvents();
 
   // The URL names labels; the server and the cached lists use label ids.
   const labelName = list.kind === 'label' ? list.name.toLowerCase() : undefined;

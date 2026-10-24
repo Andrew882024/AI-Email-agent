@@ -1,59 +1,49 @@
-import { useQueryClient } from '@tanstack/react-query';
-import { useEffect } from 'react';
-import { useUi } from '../store';
-import type { SyncPhase } from './types';
+// The server's live event stream. Stateless: it validates each event and hands it to the caller,
+// who decides what to update.
+import { z } from 'zod';
+import { validate } from './client';
+import { SyncPhase } from './sync';
 
-/** Keep cached data fresh from the server's event stream (sync, outbox, labels, todos). */
-export function useServerEvents(enabled: boolean): void {
-  const qc = useQueryClient();
-  const setSync = useUi((s) => s.setSync);
-  const setReauthRequired = useUi((s) => s.setReauthRequired);
-  const toast = useUi((s) => s.toast);
+export const SyncEvent = z.object({
+  phase: SyncPhase,
+  synced: z.number().optional(),
+  error: z.string().optional(),
+});
+export type SyncEvent = z.output<typeof SyncEvent>;
 
-  useEffect(() => {
-    if (!enabled) return;
-    const source = new EventSource('/api/events');
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    // Sync can emit many events in a burst; refetch once they settle.
-    const refreshMail = () => {
-      clearTimeout(timer);
-      timer = setTimeout(() => {
-        void qc.invalidateQueries({ queryKey: ['threads'] });
-        void qc.invalidateQueries({ queryKey: ['thread'] });
-        void qc.invalidateQueries({ queryKey: ['labels'] });
-      }, 300);
-    };
-    const data = <T>(event: Event) => JSON.parse((event as MessageEvent<string>).data) as T;
+export const OutboxFailedEvent = z.object({ op: z.string(), error: z.string() });
+export type OutboxFailedEvent = z.output<typeof OutboxFailedEvent>;
 
-    for (const name of ['message.added', 'message.updated', 'message.deleted']) {
-      source.addEventListener(name, refreshMail);
-    }
-    source.addEventListener(
-      'labels.changed',
-      () => void qc.invalidateQueries({ queryKey: ['labels'] }),
-    );
-    source.addEventListener(
-      'todos.changed',
-      () => void qc.invalidateQueries({ queryKey: ['todos'] }),
-    );
-    source.addEventListener(
-      'workflow.updated',
-      () => void qc.invalidateQueries({ queryKey: ['workflows'] }),
-    );
-    source.addEventListener('sync.status', (event) => {
-      const status = data<{ phase: SyncPhase; synced?: number; error?: string }>(event);
-      setSync(status);
-      if (status.phase === 'reauth_required') setReauthRequired(true);
-      if (status.phase === 'idle') void qc.invalidateQueries({ queryKey: ['sync'] });
+export interface ServerEventHandlers {
+  /** Mail was added, changed or deleted. */
+  mail(): void;
+  labels(): void;
+  todos(): void;
+  workflows(): void;
+  sync(event: SyncEvent): void;
+  outboxFailed(event: OutboxFailedEvent): void;
+}
+
+/** Listen to /api/events. Returns a function that closes the connection. */
+export function connectServerEvents(handlers: ServerEventHandlers): () => void {
+  const source = new EventSource('/api/events');
+  const data = <S extends z.ZodType>(schema: S, event: Event, name: string) =>
+    validate(schema, JSON.parse((event as MessageEvent<string>).data), `event ${name}`);
+  const on = (name: string, handle: (event: Event) => void) =>
+    source.addEventListener(name, (event) => {
+      try {
+        handle(event);
+      } catch (err) {
+        console.error(err); // a malformed event must not break the stream
+      }
     });
-    source.addEventListener('outbox.failed', (event) => {
-      const failure = data<{ op: string; error: string }>(event);
-      toast(`Couldn't apply a change in Gmail (${failure.op}): ${failure.error}`, 'error');
-      refreshMail();
-    });
-    return () => {
-      clearTimeout(timer);
-      source.close();
-    };
-  }, [enabled, qc, setSync, setReauthRequired, toast]);
+
+  for (const name of ['message.added', 'message.updated', 'message.deleted'])
+    on(name, () => handlers.mail());
+  on('labels.changed', () => handlers.labels());
+  on('todos.changed', () => handlers.todos());
+  on('workflow.updated', () => handlers.workflows());
+  on('sync.status', (e) => handlers.sync(data(SyncEvent, e, 'sync.status')));
+  on('outbox.failed', (e) => handlers.outboxFailed(data(OutboxFailedEvent, e, 'outbox.failed')));
+  return () => source.close();
 }

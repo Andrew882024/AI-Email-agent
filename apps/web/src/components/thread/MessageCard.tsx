@@ -1,9 +1,9 @@
 import { Download, Paperclip, Reply } from 'lucide-react';
 import { useState } from 'react';
-import type { Message } from '../../api/types';
+import { attachmentUrl, type Message } from '../../api/mail';
 import { IconButton } from '../ui/IconButton';
 import { displayName, fileSize, longDate } from '../../utils/format';
-import type { ComposeMode } from '../../store';
+import type { ComposeMode } from '../../state/ui';
 import { EmailBody } from './EmailBody';
 
 /** One message of the conversation: collapsed to a line, or expanded with body and attachments. */
@@ -87,7 +87,7 @@ export function MessageCard(props: {
             {files.map((a) => (
               <a
                 key={a.partId}
-                href={`/api/messages/${message.id}/attachments/${encodeURIComponent(a.partId)}`}
+                href={attachmentUrl(message.id, a.partId)}
                 target="_blank"
                 rel="noreferrer"
                 className="flex w-56 items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm hover:bg-gray-50"

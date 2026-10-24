@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { applyToMessage, applyToThread, belongsInList, labelChangeFor } from '../api/optimistic';
-import type { Message, ThreadSummary } from '../api/types';
+import { applyToMessage, applyToThread, belongsInList, labelChangeFor } from '../state/optimistic';
+import type { Message, ThreadSummary } from '../api/mail';
 import { buildEmailDocument, textToHtml } from './email-html';
 import { participantsLine, shortDate, splitRecipients } from './format';
 

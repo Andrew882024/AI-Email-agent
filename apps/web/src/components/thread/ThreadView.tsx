@@ -10,10 +10,11 @@ import {
   Star,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import { useAuthStatus, useLabels, useThread, useTool } from '../../api/queries';
-import type { EmailAddress, Message } from '../../api/types';
+import type { EmailAddress, MailToolName, Message } from '../../api/mail';
+import { useAuthStatus } from '../../state/auth';
+import { useLabels, useMailTool, useThread } from '../../state/mail';
 import { displayName } from '../../utils/format';
-import { type ComposeMode, useUi } from '../../store';
+import { type ComposeMode, useComposeActions, useToast } from '../../state/ui';
 import { LabelMenu } from '../mail/LabelMenu';
 import { Button } from '../ui/Button';
 import { EmptyState } from '../ui/EmptyState';
@@ -54,9 +55,9 @@ export function ThreadView({ threadId }: { threadId: string }) {
   const thread = useThread(threadId);
   const labels = useLabels();
   const auth = useAuthStatus();
-  const tool = useTool();
-  const openCompose = useUi((s) => s.openCompose);
-  const toast = useUi((s) => s.toast);
+  const tool = useMailTool();
+  const openCompose = useComposeActions().open;
+  const toast = useToast();
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const markedRead = useRef(false);
   const self = auth.data?.account?.email ?? '';
@@ -113,7 +114,7 @@ export function ThreadView({ threadId }: { threadId: string }) {
               .map((a) => displayName(a, self))
               .join(', '),
     });
-  const act = (name: string, closeAfter = false) => {
+  const act = (name: MailToolName, closeAfter = false) => {
     tool.mutate({ name, input: { messageIds: ids } });
     if (closeAfter) openThread(undefined);
   };

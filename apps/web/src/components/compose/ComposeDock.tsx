@@ -1,9 +1,16 @@
 import { Maximize2, Minus, Paperclip, Trash2, X } from 'lucide-react';
-import { useQueryClient } from '@tanstack/react-query';
 import { useRef } from 'react';
-import { callTool } from '../../api/client';
+import type { MailToolName } from '../../api/mail';
 import { fileSize, splitRecipients } from '../../utils/format';
-import { type ComposeAttachment, type ComposeDraft, useUi } from '../../store';
+import { useSendMail } from '../../state/mail';
+import {
+  type ComposeAttachment,
+  type ComposeDraft,
+  useChatPanel,
+  useComposeActions,
+  useComposes,
+  useToast,
+} from '../../state/ui';
 import { Button } from '../ui/Button';
 import { IconButton } from '../ui/IconButton';
 
@@ -32,7 +39,7 @@ function readFile(file: File): Promise<ComposeAttachment> {
 }
 
 /** The tool call that sends a draft. */
-function toolCall(draft: ComposeDraft): { name: string; input: Record<string, unknown> } {
+function toolCall(draft: ComposeDraft): { name: MailToolName; input: Record<string, unknown> } {
   const attachments = draft.attachments.map(({ filename, mimeType, contentBase64 }) => ({
     filename,
     mimeType,
@@ -91,10 +98,9 @@ function Field(props: {
 }
 
 function ComposeWindow({ draft }: { draft: ComposeDraft }) {
-  const update = useUi((s) => s.updateCompose);
-  const close = useUi((s) => s.closeCompose);
-  const toast = useUi((s) => s.toast);
-  const qc = useQueryClient();
+  const { update, close } = useComposeActions();
+  const toast = useToast();
+  const sendMail = useSendMail();
   const fileInput = useRef<HTMLInputElement>(null);
   const set = (patch: Partial<ComposeDraft>) => update(draft.id, patch);
   const addressed = draft.mode === 'new' || draft.mode === 'forward';
@@ -121,11 +127,9 @@ function ComposeWindow({ draft }: { draft: ComposeDraft }) {
   const send = async () => {
     set({ sending: true, error: undefined });
     try {
-      const { name, input } = toolCall(draft);
-      await callTool(name, input);
+      await sendMail.mutateAsync(toolCall(draft));
       close(draft.id);
       toast('Message queued — it will be sent in a moment');
-      void qc.invalidateQueries({ queryKey: ['sync'] });
     } catch (err) {
       set({ sending: false, error: err instanceof Error ? err.message : String(err) });
     }
@@ -253,8 +257,8 @@ function ComposeWindow({ draft }: { draft: ComposeDraft }) {
 
 /** Compose windows docked bottom-right, like Gmail. */
 export function ComposeDock() {
-  const composes = useUi((s) => s.composes);
-  const chatOpen = useUi((s) => s.chatOpen);
+  const composes = useComposes();
+  const chatOpen = useChatPanel().open;
   if (composes.length === 0) return null;
   return (
     // Sits left of the assistant panel when it's open, so neither covers the other.

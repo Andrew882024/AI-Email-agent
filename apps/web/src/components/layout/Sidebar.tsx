@@ -9,10 +9,10 @@ import {
   Tag,
   type LucideIcon,
 } from 'lucide-react';
-import { useLabels, useTodos } from '../../api/queries';
-import type { Label, View } from '../../api/types';
+import type { Label, View } from '../../api/mail';
 import { type MailList, sameList, showList } from '../../router/mail-params';
-import { useUi } from '../../store';
+import { useLabels, useTodos } from '../../state/mail';
+import { useComposeActions } from '../../state/ui';
 
 interface NavItem {
   list: MailList;
@@ -40,7 +40,7 @@ function NavRow({ item, active }: { item: NavItem; active: boolean }) {
 
 /** Lists and labels; `list` is the one shown now (from the URL), highlighted. */
 export function Sidebar({ list }: { list: MailList }) {
-  const openCompose = useUi((s) => s.openCompose);
+  const openCompose = useComposeActions().open;
   const labels = useLabels();
   const todos = useTodos();
   const byId = new Map<string, Label>((labels.data ?? []).map((l) => [l.id, l]));

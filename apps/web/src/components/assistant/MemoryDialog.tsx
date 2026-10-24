@@ -1,10 +1,8 @@
 import * as Dialog from '@radix-ui/react-dialog';
-import { useQueryClient } from '@tanstack/react-query';
 import { Pencil, Trash2, X } from 'lucide-react';
 import { useState } from 'react';
-import { useMemory } from '../../api/chat';
-import { api } from '../../api/client';
-import { useUi } from '../../store';
+import { useDeleteMemory, useMemory, useUpdateMemory } from '../../state/chat';
+import { useToast } from '../../state/ui';
 import { Button } from '../ui/Button';
 import { IconButton } from '../ui/IconButton';
 import { Spinner } from '../ui/Spinner';
@@ -12,30 +10,22 @@ import { Spinner } from '../ui/Spinner';
 /** What the assistant remembers about the user across chats; editable and deletable. */
 export function MemoryDialog(props: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const memory = useMemory(props.open);
-  const qc = useQueryClient();
-  const toast = useUi((s) => s.toast);
+  const updateMemory = useUpdateMemory();
+  const deleteMemory = useDeleteMemory();
+  const toast = useToast();
   const [editing, setEditing] = useState<{ id: string; content: string }>();
+  const fail = (err: unknown) => toast(err instanceof Error ? err.message : String(err), 'error');
 
-  const refresh = () => qc.invalidateQueries({ queryKey: ['chat', 'memory'] });
   const save = async () => {
     if (!editing) return;
     try {
-      await api(`/api/memory/${editing.id}`, {
-        method: 'PATCH',
-        body: { content: editing.content },
-      });
+      await updateMemory.mutateAsync(editing);
       setEditing(undefined);
-      await refresh();
     } catch (err) {
-      toast(err instanceof Error ? err.message : String(err), 'error');
+      fail(err);
     }
   };
-  const remove = async (id: string) => {
-    await api(`/api/memory/${id}`, { method: 'DELETE' }).catch((err: unknown) =>
-      toast(err instanceof Error ? err.message : String(err), 'error'),
-    );
-    await refresh();
-  };
+  const remove = (id: string) => deleteMemory.mutateAsync(id).catch(fail);
 
   return (
     <Dialog.Root open={props.open} onOpenChange={props.onOpenChange}>

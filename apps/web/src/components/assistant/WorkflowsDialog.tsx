@@ -1,18 +1,10 @@
 import * as Dialog from '@radix-ui/react-dialog';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, ExternalLink, Pause, Play, RotateCcw, Trash2, X, Zap } from 'lucide-react';
 import { useState } from 'react';
-import { callTool } from '../../api/client';
-import {
-  actionText,
-  DOCUMENT_NAMES,
-  useWorkflow,
-  useWorkflows,
-  type Workflow,
-  type WorkflowStatus,
-} from '../../api/workflows';
+import type { WorkflowStatus, WorkflowSummary } from '../../api/workflows';
+import { useWorkflow, useWorkflowAction, useWorkflows } from '../../state/workflows';
+import { actionText, DOCUMENT_NAMES } from '../../utils/workflows';
 import { shortDate } from '../../utils/format';
-import { useUi } from '../../store';
 import { Button } from '../ui/Button';
 import { IconButton } from '../ui/IconButton';
 import { Spinner } from '../ui/Spinner';
@@ -27,23 +19,7 @@ const STATUS: Record<WorkflowStatus, { text: string; className: string }> = {
   failed: { text: 'Failed', className: 'bg-red-100 text-red-800' },
 };
 
-function useWorkflowAction() {
-  const qc = useQueryClient();
-  const toast = useUi((s) => s.toast);
-  return useMutation({
-    mutationFn: ({ tool, input }: { tool: string; input: Record<string, unknown> }) =>
-      callTool(tool, input),
-    onError: (err) => toast(err instanceof Error ? err.message : String(err), 'error'),
-    onSettled: () => {
-      void qc.invalidateQueries({ queryKey: ['workflows'] });
-      void qc.invalidateQueries({ queryKey: ['threads'] });
-      void qc.invalidateQueries({ queryKey: ['labels'] });
-      void qc.invalidateQueries({ queryKey: ['todos'] });
-    },
-  });
-}
-
-function Controls({ workflow, onDeleted }: { workflow: Workflow; onDeleted?: () => void }) {
+function Controls({ workflow, onDeleted }: { workflow: WorkflowSummary; onDeleted?: () => void }) {
   const run = useWorkflowAction();
   const id = { workflowId: workflow.id };
   return (
@@ -112,7 +88,7 @@ function Details({ id, onBack }: { id: string; onBack: () => void }) {
             ...workflow,
             counts: detail.data.decisions.reduce(
               (c, d) => ({ ...c, [d.status]: (c[d.status] ?? 0) + 1 }),
-              {} as Workflow['counts'],
+              {} as WorkflowSummary['counts'],
             ),
           }}
           onDeleted={onBack}

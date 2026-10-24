@@ -1,4 +1,3 @@
-import { useQueryClient } from '@tanstack/react-query';
 import {
   Archive,
   ChevronLeft,
@@ -10,26 +9,26 @@ import {
   RefreshCw,
   Star,
 } from 'lucide-react';
+import type { MailToolName, View } from '../../api/mail';
+import { useAuthStatus } from '../../state/auth';
 import {
-  listKey,
   type MailboxQuery,
   PAGE_SIZE,
-  useAuthStatus,
+  useAddTodos,
   useLabels,
+  useMailTool,
+  usePageCursor,
+  useRefreshThreads,
   useThreads,
-  useTool,
-} from '../../api/queries';
-import type { View } from '../../api/types';
+} from '../../state/mail';
+import { useSelection } from '../../state/ui';
 import { LabelMenu } from '../mail/LabelMenu';
 import { Checkbox } from '../ui/Checkbox';
 import { EmptyState } from '../ui/EmptyState';
 import { IconButton } from '../ui/IconButton';
 import { Spinner } from '../ui/Spinner';
 import { showPage } from '../../router/mail-params';
-import { useUi } from '../../store';
 import { ThreadRow } from './ThreadRow';
-import { useAddTodos } from './useAddTodos';
-import { usePageCursor } from './usePageCursor';
 
 const VIEW_TITLES: Record<View, string> = {
   inbox: 'Inbox',
@@ -45,16 +44,14 @@ const VIEW_TITLES: Record<View, string> = {
 
 /** A page of a thread list, with bulk actions and paging. */
 export function MailboxView({ list, page }: { list: MailboxQuery; page: number }) {
-  const selected = useUi((s) => s.selected);
-  const setSelected = useUi((s) => s.setSelected);
-  const setCursors = useUi((s) => s.setCursors);
-  const { cursor, ready } = usePageCursor(list, page);
+  const { selected, set: setSelected } = useSelection();
+  const { cursor, ready, rememberNext } = usePageCursor(list, page);
   const threads = useThreads(list, cursor, ready);
   const labels = useLabels();
   const auth = useAuthStatus();
-  const tool = useTool();
+  const tool = useMailTool();
   const addTodos = useAddTodos();
-  const qc = useQueryClient();
+  const refreshThreads = useRefreshThreads();
 
   const labelMap = new Map((labels.data ?? []).map((l) => [l.id, l]));
   const items = threads.data?.items ?? [];
@@ -63,7 +60,7 @@ export function MailboxView({ list, page }: { list: MailboxQuery; page: number }
   const archiveView = list.view === 'archived';
   const anyUnread = chosen.some((t) => !t.isRead);
   const anyUnstarred = chosen.some((t) => !t.isStarred);
-  const run = (name: string) => {
+  const run = (name: MailToolName) => {
     tool.mutate({ name, input: { messageIds: chosenIds } });
     setSelected([]);
   };
@@ -76,8 +73,7 @@ export function MailboxView({ list, page }: { list: MailboxQuery; page: number }
     const next = threads.data?.nextCursor;
     if (!next) return;
     // Remember how to load the next page, so it (and a reload of it) needs no extra requests.
-    const known = useUi.getState().cursors[listKey(list)] ?? [undefined];
-    setCursors(listKey(list), [...known.slice(0, page), next]);
+    rememberNext(next);
     showPage(page + 1);
   };
   const first = (page - 1) * PAGE_SIZE + 1;
@@ -96,10 +92,7 @@ export function MailboxView({ list, page }: { list: MailboxQuery; page: number }
           />
         </span>
         {chosen.length === 0 ? (
-          <IconButton
-            label="Refresh"
-            onClick={() => void qc.invalidateQueries({ queryKey: ['threads'] })}
-          >
+          <IconButton label="Refresh" onClick={refreshThreads}>
             <RefreshCw
               className={`h-[18px] w-[18px] ${threads.isFetching ? 'animate-spin' : ''}`}
             />

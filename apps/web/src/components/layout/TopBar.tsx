@@ -1,5 +1,4 @@
 import * as Menu from '@radix-ui/react-dropdown-menu';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   AlertTriangle,
   Check,
@@ -11,16 +10,15 @@ import {
   X,
 } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
-import { api } from '../../api/client';
-import { useAuthStatus, useSyncStatus } from '../../api/queries';
 import { showList } from '../../router/mail-params';
-import { useUi } from '../../store';
+import { useAuthStatus, useLogout } from '../../state/auth';
+import { useSyncNow, useSyncStatus } from '../../state/sync';
+import { useChatPanel } from '../../state/ui';
 import { IconButton } from '../ui/IconButton';
 import { Spinner } from '../ui/Spinner';
 
 function SyncIndicator() {
-  const sync = useUi((s) => s.sync);
-  const status = useSyncStatus(true);
+  const { status, live: sync } = useSyncStatus();
   const pending = status.data?.outboxPending ?? 0;
   if (sync.phase === 'full_sync' || status.data?.fullSync) {
     const synced = sync.synced ?? status.data?.fullSync?.synced ?? 0;
@@ -47,10 +45,8 @@ function SyncIndicator() {
 
 /** Search (`search` is the query in the URL), sync status, assistant toggle and account menu. */
 export function TopBar({ search }: { search: string }) {
-  const toggleChat = useUi((s) => s.toggleChat);
-  const chatOpen = useUi((s) => s.chatOpen);
+  const { open: chatOpen, toggle: toggleChat } = useChatPanel();
   const auth = useAuthStatus();
-  const qc = useQueryClient();
   const activeQuery = search;
   const [text, setText] = useState(activeQuery);
   const [shownQuery, setShownQuery] = useState(activeQuery);
@@ -59,11 +55,8 @@ export function TopBar({ search }: { search: string }) {
     setShownQuery(activeQuery);
     setText(activeQuery);
   }
-  const refresh = useMutation({ mutationFn: () => api('/api/sync/now', { method: 'POST' }) });
-  const logout = useMutation({
-    mutationFn: () => api('/api/auth/logout', { method: 'POST' }),
-    onSuccess: () => void qc.invalidateQueries(),
-  });
+  const refresh = useSyncNow();
+  const logout = useLogout();
 
   const submit = (e: FormEvent) => {
     e.preventDefault();

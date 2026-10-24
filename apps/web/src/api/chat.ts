@@ -1,114 +1,147 @@
-import { useQuery } from '@tanstack/react-query';
-import { api, ApiError } from './client';
+import { z } from 'zod';
+import { ApiError, ensureOk, IsoDate, Ok, optional, readBase64, request, validate } from './client';
 
-export type StoredPart =
-  | { type: 'text'; text: string }
-  | { type: 'file_ref'; fileId: string; name: string; mimeType: string }
-  | { type: 'tool_call'; id?: string; name: string; args: Record<string, unknown> }
-  | { type: 'tool_result'; id?: string; name: string; result: unknown; isError?: boolean };
+// ---- shapes ----
 
-export interface ChatSession {
-  id: string;
-  title: string;
-  updatedAt: string;
-}
+const Args = z.record(z.string(), z.unknown());
 
-export interface ChatMessage {
-  id: string;
-  role: 'user' | 'model';
-  parts: StoredPart[];
-}
+export const StoredPart = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('text'), text: z.string() }),
+  z.object({
+    type: z.literal('file_ref'),
+    fileId: z.string(),
+    name: z.string(),
+    mimeType: z.string(),
+  }),
+  z.object({
+    type: z.literal('tool_call'),
+    id: optional(z.string()),
+    name: z.string(),
+    args: Args,
+  }),
+  z.object({
+    type: z.literal('tool_result'),
+    id: optional(z.string()),
+    name: z.string(),
+    result: z.unknown(),
+    isError: optional(z.boolean()),
+  }),
+]);
+export type StoredPart = z.output<typeof StoredPart>;
 
-export interface ToolRun {
-  id: string;
-  tool: string;
-  input: Record<string, unknown>;
-  status: 'awaiting_approval' | 'done' | 'error' | 'rejected';
+export const ChatSession = z.object({ id: z.string(), title: z.string(), updatedAt: IsoDate });
+export type ChatSession = z.output<typeof ChatSession>;
+
+export const ChatMessage = z.object({
+  id: z.string(),
+  role: z.enum(['user', 'model']),
+  parts: z.array(StoredPart),
+});
+export type ChatMessage = z.output<typeof ChatMessage>;
+
+export const ToolRun = z.object({
+  id: z.string(),
+  tool: z.string(),
+  input: Args,
+  status: z.enum(['awaiting_approval', 'done', 'error', 'rejected']),
   /** For waiting runs: { description } of the approval request. */
-  result?: unknown;
-}
+  result: z.unknown(),
+});
+export type ToolRun = z.output<typeof ToolRun>;
 
-export interface EmailDraft {
-  mode: 'new' | 'reply' | 'replyAll' | 'forward';
-  sourceMessageId?: string;
-  to: string[];
-  cc: string[];
-  subject: string;
-  body: string;
-  replyPreview?: string;
-}
+export const ChatSessionDetail = z.object({
+  session: ChatSession,
+  messages: z.array(ChatMessage),
+  awaiting: z.array(ToolRun),
+});
+export type ChatSessionDetail = z.output<typeof ChatSessionDetail>;
 
-export type AgentEvent =
-  | { type: 'text'; text: string }
-  | { type: 'tool_call'; runId: string; name: string; args: Record<string, unknown> }
-  | { type: 'tool_result'; runId: string; name: string; ok: boolean; summary: string }
-  | {
-      type: 'approval_required';
-      runId: string;
-      name: string;
-      args: Record<string, unknown>;
-      description: string;
-    }
-  | { type: 'draft'; draft: EmailDraft }
-  | { type: 'done'; status: 'complete' | 'awaiting_approval' | 'step_limit' }
-  | { type: 'error'; message: string };
+export const EmailDraft = z.object({
+  mode: z.enum(['new', 'reply', 'replyAll', 'forward']),
+  sourceMessageId: optional(z.string()),
+  to: z.array(z.string()),
+  cc: z.array(z.string()),
+  subject: z.string(),
+  body: z.string(),
+  replyPreview: optional(z.string()),
+});
+export type EmailDraft = z.output<typeof EmailDraft>;
 
-export interface MemoryItem {
-  id: string;
-  content: string;
-  category: string;
-  updatedAt: string;
-}
+/** What the assistant streams back during a turn. */
+export const AgentEvent = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('text'), text: z.string() }),
+  z.object({ type: z.literal('tool_call'), runId: z.string(), name: z.string(), args: Args }),
+  z.object({
+    type: z.literal('tool_result'),
+    runId: z.string(),
+    name: z.string(),
+    ok: z.boolean(),
+    summary: z.string(),
+  }),
+  z.object({
+    type: z.literal('approval_required'),
+    runId: z.string(),
+    name: z.string(),
+    args: Args,
+    description: z.string(),
+  }),
+  z.object({ type: z.literal('draft'), draft: EmailDraft }),
+  z.object({
+    type: z.literal('done'),
+    status: z.enum(['complete', 'awaiting_approval', 'step_limit']),
+  }),
+  z.object({ type: z.literal('error'), message: z.string() }),
+]);
+export type AgentEvent = z.output<typeof AgentEvent>;
 
-export function useChatSessions() {
-  return useQuery({
-    queryKey: ['chat', 'sessions'],
-    queryFn: () => api<ChatSession[]>('/api/chat/sessions'),
+export const ChatFile = z.object({
+  id: z.string(),
+  filename: z.string(),
+  mimeType: z.string(),
+  size: z.number(),
+});
+export type ChatFile = z.output<typeof ChatFile>;
+
+// ---- requests ----
+
+export const listChatSessions = () => request(z.array(ChatSession), '/api/chat/sessions');
+
+export const getChatSession = (id: string) =>
+  request(ChatSessionDetail, `/api/chat/sessions/${encodeURIComponent(id)}`);
+
+export const createChatSession = () =>
+  request(ChatSession, '/api/chat/sessions', { method: 'POST', body: {} });
+
+export const deleteChatSession = (id: string) =>
+  request(Ok, `/api/chat/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' });
+
+/** Upload a file for the next message (sent as base64 JSON). */
+export const uploadChatFile = async (file: File) =>
+  request(ChatFile, '/api/chat/files', {
+    method: 'POST',
+    body: {
+      filename: file.name,
+      mimeType: file.type || 'application/octet-stream',
+      contentBase64: await readBase64(file),
+    },
   });
-}
 
-export function useChatSession(id: string | undefined) {
-  return useQuery({
-    queryKey: ['chat', 'session', id],
-    queryFn: () =>
-      api<{ session: ChatSession; messages: ChatMessage[]; awaiting: ToolRun[] }>(
-        `/api/chat/sessions/${id}`,
-      ),
-    enabled: !!id,
-  });
-}
-
-export function useMemory(enabled: boolean) {
-  return useQuery({
-    queryKey: ['chat', 'memory'],
-    queryFn: () => api<MemoryItem[]>('/api/memory'),
-    enabled,
-  });
-}
-
-/** POST that answers with an SSE stream of agent events (or a JSON error before it starts). */
-export async function streamTurn(
-  url: string,
+/** POST that answers with a stream of agent events (or a JSON error before it starts). */
+async function streamTurn(
+  path: string,
   body: unknown,
-  onEvent: (e: AgentEvent) => void,
+  onEvent: (event: AgentEvent) => void,
   signal?: AbortSignal,
 ): Promise<void> {
-  const res = await fetch(url, {
+  const res = await fetch(path, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(body),
     signal,
   });
-  if (!res.headers.get('content-type')?.includes('text/event-stream')) {
-    const payload = (await res.json().catch(() => null)) as {
-      error?: { code?: string; message?: string };
-    } | null;
-    throw new ApiError(
-      res.status,
-      payload?.error?.code ?? 'http_error',
-      payload?.error?.message ?? res.statusText,
-    );
-  }
+  await ensureOk(res);
+  if (!res.headers.get('content-type')?.includes('text/event-stream'))
+    throw new ApiError(res.status, 'invalid_response', `Expected an event stream from ${path}`);
   const reader = res.body!.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
@@ -120,22 +153,37 @@ export async function streamTurn(
     while ((index = buffer.indexOf('\n\n')) >= 0) {
       const chunk = buffer.slice(0, index);
       buffer = buffer.slice(index + 2);
-      if (chunk.startsWith('data: ')) onEvent(JSON.parse(chunk.slice(6)) as AgentEvent);
+      if (chunk.startsWith('data: '))
+        onEvent(validate(AgentEvent, JSON.parse(chunk.slice(6)), `the assistant (${path})`));
     }
   }
 }
 
-export async function uploadChatFile(
-  file: File,
-): Promise<{ id: string; filename: string; mimeType: string; size: number }> {
-  const contentBase64 = await new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result).split(',')[1] ?? '');
-    reader.onerror = () => reject(reader.error ?? new Error(`Couldn't read ${file.name}`));
-    reader.readAsDataURL(file);
-  });
-  return api('/api/chat/files', {
-    method: 'POST',
-    body: { filename: file.name, mimeType: file.type || 'application/octet-stream', contentBase64 },
-  });
-}
+/** Send a message; the assistant's reply streams to `onEvent`. */
+export const sendChatMessage = (
+  sessionId: string,
+  message: { text: string; fileIds: string[] },
+  onEvent: (event: AgentEvent) => void,
+  signal?: AbortSignal,
+) =>
+  streamTurn(
+    `/api/chat/sessions/${encodeURIComponent(sessionId)}/messages`,
+    message,
+    onEvent,
+    signal,
+  );
+
+/** Approve or reject an action the assistant asked to run; the rest of the turn streams back. */
+export const resolveChatAction = (
+  sessionId: string,
+  runId: string,
+  approve: boolean,
+  onEvent: (event: AgentEvent) => void,
+  signal?: AbortSignal,
+) =>
+  streamTurn(
+    `/api/chat/sessions/${encodeURIComponent(sessionId)}/actions/${encodeURIComponent(runId)}`,
+    { approve },
+    onEvent,
+    signal,
+  );

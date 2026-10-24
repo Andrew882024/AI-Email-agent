@@ -1,10 +1,7 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Mail } from 'lucide-react';
-import { api } from '../../api/client';
-import { useAuthStatus } from '../../api/queries';
 import { Button } from '../../components/ui/Button';
 import { Spinner } from '../../components/ui/Spinner';
-import { useUi } from '../../store';
+import { useAuthStatus, useLogin } from '../../state/auth';
 
 /**
  * The login page (/login): connect a Google account, or reconnect one whose sign-in expired.
@@ -12,15 +9,7 @@ import { useUi } from '../../store';
  */
 export function LoginPage() {
   const auth = useAuthStatus();
-  const setReauthRequired = useUi((s) => s.setReauthRequired);
-  const qc = useQueryClient();
-  const login = useMutation({
-    mutationFn: () => api('/api/auth/login', { method: 'POST' }),
-    onSuccess: () => {
-      setReauthRequired(false);
-      void qc.invalidateQueries();
-    },
-  });
+  const login = useLogin();
 
   const account = auth.data?.account;
 

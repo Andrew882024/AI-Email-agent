@@ -1,4 +1,4 @@
-import type { EmailAddress } from '../api/types';
+import type { EmailAddress } from '../api/mail';
 
 export function displayName(address: EmailAddress | undefined, self?: string): string {
   if (!address) return '(unknown)';

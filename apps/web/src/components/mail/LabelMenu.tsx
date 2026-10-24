@@ -2,9 +2,8 @@ import * as Dialog from '@radix-ui/react-dialog';
 import * as Menu from '@radix-ui/react-dropdown-menu';
 import { Check, Minus, Plus, Tag } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
-import { callTool } from '../../api/client';
-import { useLabels, useTool } from '../../api/queries';
-import { useUi } from '../../store';
+import { useCreateLabel, useLabels, useMailTool } from '../../state/mail';
+import { useToast } from '../../state/ui';
 import { Button } from '../ui/Button';
 import { IconButton } from '../ui/IconButton';
 
@@ -17,7 +16,7 @@ export function LabelMenu({
   labelIds: string[][];
 }) {
   const labels = useLabels();
-  const tool = useTool();
+  const tool = useMailTool();
   const [creating, setCreating] = useState(false);
   const userLabels = (labels.data ?? []).filter((l) => l.type === 'user');
 
@@ -86,17 +85,16 @@ function CreateLabelDialog(props: {
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
-  const tool = useTool();
-  const toast = useUi((s) => s.toast);
+  const tool = useMailTool();
+  const toast = useToast();
+  const createLabel = useCreateLabel();
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     setBusy(true);
     setError(undefined);
     try {
-      const { label } = await callTool<{ label: { id: string; name: string } }>('create_label', {
-        name: name.trim(),
-      });
+      const label = await createLabel.mutateAsync(name.trim());
       if (props.applyTo.length > 0)
         tool.mutate({ name: 'add_label', input: { messageIds: props.applyTo, label: label.id } });
       toast(`Label "${label.name}" created`);

@@ -1,9 +1,9 @@
 import { X } from 'lucide-react';
 import { useEffect } from 'react';
-import { type Toast, useUi } from '../../store';
+import { type Toast, useToasts } from '../../state/ui';
 
 function ToastItem({ toast }: { toast: Toast }) {
-  const dismiss = useUi((s) => s.dismissToast);
+  const { dismiss } = useToasts();
   useEffect(() => {
     const timer = setTimeout(() => dismiss(toast.id), toast.kind === 'error' ? 8000 : 4000);
     return () => clearTimeout(timer);
@@ -22,7 +22,7 @@ function ToastItem({ toast }: { toast: Toast }) {
 }
 
 export function Toasts() {
-  const toasts = useUi((s) => s.toasts);
+  const { toasts } = useToasts();
   return (
     <div className="fixed bottom-6 left-6 z-50 flex flex-col gap-2">
       {toasts.map((t) => (

@@ -17,5 +17,52 @@ export default defineConfig(
     languageOptions: { globals: globals.browser },
     extends: [reactHooks.configs.flat['recommended-latest']],
   },
+  // Layering: pages/components keep their own state with useState and reach global state only
+  // through the hooks in state/; api/ is stateless (requests and validation only).
+  {
+    files: ['src/pages/**', 'src/components/**', 'src/router/**'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: [
+                '@tanstack/react-query',
+                'zustand',
+                '**/state/store',
+                '**/state/query-client',
+              ],
+              message: 'Use the hooks in src/state/ to read or change global state.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    files: ['src/api/**'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: [
+                'react',
+                '@tanstack/react-query',
+                'zustand',
+                '**/state/**',
+                '**/components/**',
+                '**/pages/**',
+                '**/router/**',
+              ],
+              message: 'api/ only requests and validates data; it keeps no state.',
+            },
+          ],
+        },
+      ],
+    },
+  },
   prettier,
 );

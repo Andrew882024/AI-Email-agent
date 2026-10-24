@@ -1,6 +1,6 @@
 import { ImageOff } from 'lucide-react';
 import { useMemo, useRef, useState } from 'react';
-import type { Message } from '../../api/types';
+import { attachmentUrl, type Message } from '../../api/mail';
 import { buildEmailDocument } from '../../utils/email-html';
 
 /**
@@ -18,12 +18,7 @@ export function EmailBody({ message }: { message: Message }) {
     const inline = new Map(
       message.attachments.flatMap((a) =>
         a.contentId
-          ? [
-              [
-                a.contentId,
-                `${origin}/api/messages/${message.id}/attachments/${encodeURIComponent(a.partId)}`,
-              ] as const,
-            ]
+          ? [[a.contentId, `${origin}${attachmentUrl(message.id, a.partId)}`] as const]
           : [],
       ),
     );

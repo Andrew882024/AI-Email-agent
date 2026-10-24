@@ -1,4 +1,4 @@
-import type { View } from '../api/types';
+import { type View, VIEWS } from '../api/mail';
 import { navigate } from './location';
 
 // The mail page's parameters live after "#", like Gmail:
@@ -20,18 +20,6 @@ export interface MailParams {
   /** An open conversation, shown instead of the list. */
   threadId?: string;
 }
-
-const VIEWS: readonly View[] = [
-  'inbox',
-  'starred',
-  'unread',
-  'sent',
-  'drafts',
-  'archived',
-  'all',
-  'trash',
-  'spam',
-];
 
 const INBOX: MailList = { kind: 'view', view: 'inbox' };
 

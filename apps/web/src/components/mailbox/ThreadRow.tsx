@@ -1,12 +1,11 @@
 import { Archive, Inbox, ListTodo, Mail, MailOpen, Paperclip, Star } from 'lucide-react';
-import { useTool } from '../../api/queries';
-import type { Label, ThreadSummary } from '../../api/types';
+import type { Label, ThreadSummary } from '../../api/mail';
 import { Checkbox } from '../ui/Checkbox';
 import { IconButton } from '../ui/IconButton';
 import { LabelChip } from '../ui/LabelChip';
 import { participantsLine, shortDate } from '../../utils/format';
-import { useUi } from '../../store';
-import { useAddTodos } from './useAddTodos';
+import { useAddTodos, useMailTool } from '../../state/mail';
+import { useSelection } from '../../state/ui';
 import { openThread } from '../../router/mail-params';
 
 /** One conversation in the list, with its hover actions. */
@@ -18,8 +17,8 @@ export function ThreadRow(props: {
   archiveView: boolean;
 }) {
   const { thread, labels, self } = props;
-  const toggleSelected = useUi((s) => s.toggleSelected);
-  const tool = useTool();
+  const toggleSelected = useSelection().toggle;
+  const tool = useMailTool();
   const addTodos = useAddTodos();
   const ids = thread.messageIds;
   const unread = !thread.isRead;

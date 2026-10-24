@@ -4,7 +4,7 @@ import { LoginPage } from '../pages/login/LoginPage';
 import { MailPage } from '../pages/mail/MailPage';
 import { type AppLocation, navigate, useLocation } from './location';
 import { formatMailHash, parseMailHash } from './mail-params';
-import { type Session, useSession } from './session';
+import { type Session, useSession } from '../state/auth';
 
 interface RouteDef {
   path: string;

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { SyncPhase } from './api/types';
+import type { SyncPhase } from '../api/sync';
 
 export type ComposeMode = 'new' | 'reply' | 'replyAll' | 'forward';
 
