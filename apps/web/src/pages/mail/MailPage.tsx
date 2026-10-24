@@ -7,6 +7,8 @@ import { TopBar } from '../../components/layout/TopBar';
 import { MailboxView } from '../../components/mailbox/MailboxView';
 import { ThreadView } from '../../components/thread/ThreadView';
 import { TodosView } from '../../components/todos/TodosView';
+import { WorkflowDetails } from '../../components/workflows/WorkflowDetails';
+import { WorkflowsView } from '../../components/workflows/WorkflowsView';
 import { Spinner } from '../../components/ui/Spinner';
 import { type MailParams, showList } from '../../router/mail-params';
 import { type MailboxQuery, useLabels } from '../../state/mail';
@@ -38,7 +40,8 @@ export function MailPage({ params }: { params: MailParams }) {
   const labelDisplayName = label?.name;
   // Stable while the list is the same, so page-cursor lookups aren't restarted by re-renders.
   const mailbox = useMemo<MailboxQuery | undefined>(() => {
-    if (list.kind === 'todos' || (labelName && !labelId)) return undefined;
+    if (list.kind === 'todos' || list.kind === 'workflows' || (labelName && !labelId))
+      return undefined;
     return { view, label: labelId, labelName: labelDisplayName, query: search };
   }, [list.kind, view, labelName, labelId, labelDisplayName, search]);
 
@@ -58,6 +61,12 @@ export function MailPage({ params }: { params: MailParams }) {
             <ThreadView key={threadId} threadId={threadId} />
           ) : list.kind === 'todos' ? (
             <TodosView />
+          ) : list.kind === 'workflows' ? (
+            list.id ? (
+              <WorkflowDetails key={list.id} id={list.id} />
+            ) : (
+              <WorkflowsView />
+            )
           ) : mailbox ? (
             <MailboxView list={mailbox} page={page} />
           ) : (

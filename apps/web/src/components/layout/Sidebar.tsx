@@ -7,12 +7,14 @@ import {
   Send,
   Star,
   Tag,
+  Zap,
   type LucideIcon,
 } from 'lucide-react';
 import type { Label, View } from '../../api/mail';
 import { type MailList, sameList, showList } from '../../router/mail-params';
 import { useLabels, useTodos } from '../../state/mail';
 import { useComposeActions } from '../../state/ui';
+import { useWorkflows } from '../../state/workflows';
 
 interface NavItem {
   list: MailList;
@@ -43,6 +45,7 @@ export function Sidebar({ list }: { list: MailList }) {
   const openCompose = useComposeActions().open;
   const labels = useLabels();
   const todos = useTodos();
+  const workflows = useWorkflows();
   const byId = new Map<string, Label>((labels.data ?? []).map((l) => [l.id, l]));
   const unread = (id: string) => byId.get(id)?.unread ?? 0;
   const mail = (view: View, name: string, icon: LucideIcon, count?: number): NavItem => ({
@@ -64,6 +67,12 @@ export function Sidebar({ list }: { list: MailList }) {
       name: 'Todos',
       icon: CheckSquare,
       count: todos.data?.filter((t) => t.status === 'needsAction').length,
+    },
+    {
+      list: { kind: 'workflows' },
+      name: 'Workflows',
+      icon: Zap,
+      count: workflows.data?.filter((w) => w.status === 'active').length,
     },
   ];
   const userLabels = (labels.data ?? []).filter((l) => l.type === 'user');

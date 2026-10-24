@@ -7,8 +7,8 @@ import {
 } from '../api/workflows';
 import { useUi } from './store';
 
-export function useWorkflows(enabled: boolean) {
-  return useQuery({ queryKey: ['workflows'], queryFn: listWorkflows, enabled });
+export function useWorkflows() {
+  return useQuery({ queryKey: ['workflows'], queryFn: listWorkflows });
 }
 
 export function useWorkflow(id: string | undefined) {
@@ -19,7 +19,7 @@ export function useWorkflow(id: string | undefined) {
   });
 }
 
-/** Apply/pause/resume/delete a workflow or undo a decision; what it touched reloads. */
+/** Apply/pause/resume/edit/delete a workflow or undo a decision; what it touched reloads. */
 export function useWorkflowAction() {
   const qc = useQueryClient();
   const toast = useUi((s) => s.toast);

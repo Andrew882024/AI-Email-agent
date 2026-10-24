@@ -26,6 +26,12 @@ describe('mail page parameters', () => {
       page: 1,
     });
     expect(parseMailHash('#label')).toEqual({ list: { kind: 'view', view: 'inbox' }, page: 1 });
+    expect(parseMailHash('#workflows')).toEqual({ list: { kind: 'workflows' }, page: 1 });
+    expect(parseMailHash('#workflows/wf-1/t1')).toEqual({
+      list: { kind: 'workflows', id: 'wf-1' },
+      page: 1,
+      threadId: 't1',
+    });
   });
 
   it('encodes labels and searches like Gmail and round-trips them', () => {
@@ -41,6 +47,8 @@ describe('mail page parameters', () => {
       ],
       [{ list: { kind: 'view', view: 'archived' }, page: 3 }, '#archived/p3'],
       [{ list: { kind: 'todos' }, page: 1 }, '#todos'],
+      [{ list: { kind: 'workflows' }, page: 1 }, '#workflows'],
+      [{ list: { kind: 'workflows', id: 'wf-1' }, page: 1 }, '#workflows/wf-1'],
     ];
     for (const [params, hash] of cases) {
       expect(formatMailHash(params)).toBe(hash);
@@ -57,5 +65,6 @@ describe('mail page parameters', () => {
     expect(sameList({ kind: 'view', view: 'inbox' }, { kind: 'view', view: 'inbox' })).toBe(true);
     expect(sameList({ kind: 'view', view: 'all' }, { kind: 'search', query: 'all' })).toBe(false);
     expect(sameList({ kind: 'todos' }, { kind: 'todos' })).toBe(true);
+    expect(sameList({ kind: 'workflows' }, { kind: 'workflows', id: 'wf-1' })).toBe(true);
   });
 });

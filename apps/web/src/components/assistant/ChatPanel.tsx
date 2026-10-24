@@ -39,10 +39,9 @@ import {
 import { useChatPanel, useComposeActions, useToast } from '../../state/ui';
 import { fileSize } from '../../utils/format';
 import { MemoryDialog } from './MemoryDialog';
-import { WorkflowsDialog } from './WorkflowsDialog';
 import { IconButton } from '../ui/IconButton';
 import { Spinner } from '../ui/Spinner';
-import { openThread } from '../../router/mail-params';
+import { openThread, showList } from '../../router/mail-params';
 
 const SUGGESTIONS = [
   'Summarize my unread emails from today',
@@ -321,7 +320,6 @@ export function ChatPanel() {
   const [live, setLive] = useState<LiveTurn>();
   const [busy, setBusy] = useState(false);
   const [memoryOpen, setMemoryOpen] = useState(false);
-  const [workflowsOpen, setWorkflowsOpen] = useState(false);
   const scroller = useRef<HTMLDivElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const abort = useRef<AbortController | null>(null);
@@ -539,7 +537,7 @@ export function ChatPanel() {
             </Menu.Content>
           </Menu.Portal>
         </Menu.Root>
-        <IconButton label="Workflows" onClick={() => setWorkflowsOpen(true)} disabled={unavailable}>
+        <IconButton label="Workflows" onClick={() => showList({ kind: 'workflows' })}>
           <Zap className="h-[18px] w-[18px]" />
         </IconButton>
         <IconButton
@@ -700,7 +698,6 @@ export function ChatPanel() {
         </div>
       </footer>
       <MemoryDialog open={memoryOpen} onOpenChange={setMemoryOpen} />
-      <WorkflowsDialog open={workflowsOpen} onOpenChange={setWorkflowsOpen} />
     </aside>
   );
 }

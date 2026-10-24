@@ -2,7 +2,7 @@ import { type View, VIEWS } from '../api/mail';
 import { navigate } from './location';
 
 // The mail page's parameters live after "#", like Gmail:
-//   /mail#inbox  #starred  #sent  #archived  #all  #todos
+//   /mail#inbox  #starred  #sent  #archived  #all  #todos  #workflows  #workflows/<id>
 //   /mail#label/Internship+Applications   /mail#search/internship+offer
 //   /mail#inbox/p4 (page 4)   /mail#inbox/p4/1a1374688843c397 (a conversation, opened from page 4)
 
@@ -11,7 +11,9 @@ export type MailList =
   | { kind: 'view'; view: View }
   | { kind: 'label'; name: string }
   | { kind: 'search'; query: string }
-  | { kind: 'todos' };
+  | { kind: 'todos' }
+  /** The automations; with `id`, that one's page. */
+  | { kind: 'workflows'; id?: string };
 
 export interface MailParams {
   list: MailList;
@@ -22,6 +24,7 @@ export interface MailParams {
 }
 
 const INBOX: MailList = { kind: 'view', view: 'inbox' };
+const ID = /^[\w-]+$/;
 
 /** Like Gmail: spaces become "+", everything else is percent-encoded (including "/" in names). */
 export const encodeSegment = (text: string) => encodeURIComponent(text).replace(/%20/g, '+');
@@ -44,6 +47,10 @@ export function parseMailHash(hash: string): MailParams {
   else if (head === 'search' && parts.length > 0)
     list = { kind: 'search', query: decodeSegment(parts.shift()!) };
   else if (head === 'todos') list = { kind: 'todos' };
+  else if (head === 'workflows')
+    list = ID.test(parts[0] ?? '')
+      ? { kind: 'workflows', id: parts.shift()! }
+      : { kind: 'workflows' };
   else if (VIEWS.includes(head as View)) list = { kind: 'view', view: head as View };
   else return { list: INBOX, page: 1 };
 
@@ -53,7 +60,7 @@ export function parseMailHash(hash: string): MailParams {
     page = Math.max(1, Number(pageMatch[1]));
     parts.shift();
   }
-  const threadId = parts[0] && /^[\w-]+$/.test(parts[0]) ? parts[0] : undefined;
+  const threadId = ID.test(parts[0] ?? '') ? parts[0] : undefined;
   return threadId ? { list, page, threadId } : { list, page };
 }
 
@@ -67,6 +74,8 @@ function listSegment(list: MailList): string {
       return `search/${encodeSegment(list.query)}`;
     case 'todos':
       return 'todos';
+    case 'workflows':
+      return list.id ? `workflows/${list.id}` : 'workflows';
   }
 }
 
@@ -76,8 +85,9 @@ export function formatMailHash(params: MailParams): string {
   return `#${listSegment(params.list)}${page}${thread}`;
 }
 
-/** Same list? (Label names compare case-insensitively, like Gmail.) */
+/** Same list? (Label names compare case-insensitively, like Gmail; a workflow's page is part of Workflows.) */
 export function sameList(a: MailList, b: MailList): boolean {
+  if (a.kind === 'workflows' && b.kind === 'workflows') return true;
   if (a.kind === 'label' && b.kind === 'label')
     return a.name.toLowerCase() === b.name.toLowerCase();
   return listSegment(a) === listSegment(b);

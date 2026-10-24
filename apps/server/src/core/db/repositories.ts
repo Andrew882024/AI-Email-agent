@@ -357,6 +357,7 @@ export interface WorkflowRepository {
   list(accountId: string, filter?: { status?: WorkflowStatus }): Promise<Workflow[]>;
   setStatus(id: string, status: WorkflowStatus, error?: string): Promise<void>;
   setAction(id: string, action: WorkflowAction): Promise<void>;
+  setCriteria(id: string, criteria: Pick<Workflow, 'criteria' | 'keywords'>): Promise<void>;
   delete(id: string): Promise<void>;
   /** Insert decisions; messages already decided by this workflow are left alone. */
   recordDecisions(

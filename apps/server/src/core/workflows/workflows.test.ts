@@ -298,6 +298,45 @@ describe.skipIf(!testDatabaseUrl)('workflows', () => {
     expect(await labelsOf('new3')).toContain(bills.id);
   });
 
+  it('judges new mail by edited criteria; only active or paused persistent workflows can be edited', async () => {
+    const { workflowId } = await engine.create(accountId, invoiceRule());
+    const ctx = { accountId, actor: 'user' } as const;
+    await expect(
+      tools.invoke('update_workflow', ctx, {
+        workflowId,
+        criteria: 'Receipts for things I bought.',
+      }),
+    ).rejects.toThrow('awaiting_approval');
+    await engine.apply(accountId, workflowId);
+
+    expect(
+      await tools.invoke('update_workflow', ctx, {
+        workflowId,
+        criteria: 'Receipts for things I bought.',
+        keywords: ['receipt'],
+      }),
+    ).toMatchObject({ criteria: 'Receipts for things I bought.', keywords: ['receipt'] });
+    expect(await repos.workflows.get(workflowId)).toMatchObject({
+      criteria: 'Receipts for things I bought.',
+      keywords: ['receipt'],
+      status: 'active',
+    });
+    expect(await repos.workflows.counts(workflowId)).toMatchObject({ applied: 4 }); // stay as they were
+
+    google.fakeGmail.add({ id: 'new1', subject: 'Receipt', body: 'Thanks', date: new Date() });
+    await mailSync.sync(accountId);
+    await engine.handleNewMail(accountId, ['new1']);
+    expect(llm.of('generate').at(-1)?.system).toContain(
+      'Emails that match: Receipts for things I bought.',
+    );
+
+    const oneShot = await engine.create(accountId, invoiceRule({ mode: 'one_shot' }));
+    await engine.apply(accountId, oneShot.workflowId);
+    await expect(
+      engine.updateCriteria(accountId, oneShot.workflowId, { keywords: [] }),
+    ).rejects.toThrow('one-time');
+  });
+
   it('runs one-shot workflows once and leaves new mail alone', async () => {
     const { workflowId } = await engine.create(
       accountId,

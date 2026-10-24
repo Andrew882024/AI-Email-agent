@@ -104,6 +104,14 @@ export class PgWorkflowRepository implements WorkflowRepository {
       .execute();
   }
 
+  async setCriteria(id: string, { criteria, keywords }: Pick<Workflow, 'criteria' | 'keywords'>) {
+    await this.db
+      .updateTable('workflows')
+      .set({ criteria, keywords, updated_at: sql`now()` })
+      .where('id', '=', id)
+      .execute();
+  }
+
   async delete(id: string) {
     await this.db.deleteFrom('workflows').where('id', '=', id).execute();
   }

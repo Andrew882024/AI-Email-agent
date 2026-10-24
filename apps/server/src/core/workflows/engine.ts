@@ -380,6 +380,27 @@ export class WorkflowEngine {
     return { ...workflow, status: paused ? 'paused' : 'active' };
   }
 
+  /**
+   * Change which emails a persistent workflow matches. New mail is judged by the new criteria;
+   * decisions already made stay (undo them one by one if needed).
+   */
+  async updateCriteria(
+    accountId: string,
+    workflowId: string,
+    change: Partial<Pick<Workflow, 'criteria' | 'keywords'>>,
+  ): Promise<Workflow> {
+    const workflow = await this.own(accountId, workflowId);
+    if (workflow.mode !== 'persistent' || !['active', 'paused'].includes(workflow.status))
+      throw new ToolError(
+        'invalid_input',
+        `Only active or paused persistent workflows can be edited (this one is ${workflow.mode === 'persistent' ? workflow.status : 'one-time'})`,
+      );
+    const updated = { ...workflow, ...change };
+    await this.options.repos.workflows.setCriteria(workflow.id, updated);
+    this.changed(workflow);
+    return updated;
+  }
+
   /** Stop and forget a workflow. Changes it already made stay (undo them first if needed). */
   async remove(accountId: string, workflowId: string): Promise<void> {
     const workflow = await this.own(accountId, workflowId);

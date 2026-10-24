@@ -190,6 +190,26 @@ export function createWorkflowTools(engine: WorkflowEngine, repos: Repositories)
       handler: (ctx, i) => engine.setPaused(ctx.accountId, i.workflowId, false),
     }),
     defineTool({
+      name: 'update_workflow',
+      description:
+        'Change which emails an active or paused persistent workflow matches (its criteria and/or keywords). ' +
+        'Only new mail is judged by the new criteria; changes already made stay.',
+      sideEffect: 'write',
+      input: z.object({
+        workflowId,
+        criteria: z
+          .string()
+          .trim()
+          .min(10)
+          .optional()
+          .describe('Which emails match and which do not, precisely'),
+        keywords: z.array(z.string().trim().min(1)).max(15).optional(),
+      }),
+      targets: (i) => [i.workflowId],
+      handler: (ctx, { workflowId, ...change }) =>
+        engine.updateCriteria(ctx.accountId, workflowId, change),
+    }),
+    defineTool({
       name: 'delete_workflow',
       description: 'Delete a workflow. Changes it already made stay; undo them first if needed.',
       sideEffect: 'write',

@@ -88,9 +88,10 @@ export type WorkflowToolName =
   | 'apply_workflow'
   | 'pause_workflow'
   | 'resume_workflow'
+  | 'update_workflow'
   | 'delete_workflow'
   | 'undo_workflow_decision';
 
-/** Apply, pause, resume or delete a workflow, or undo one of its decisions. */
+/** Apply, pause, resume, edit or delete a workflow, or undo one of its decisions. */
 export const runWorkflowTool = (name: WorkflowToolName, input: Record<string, unknown>) =>
   callTool(name, input, z.unknown());
