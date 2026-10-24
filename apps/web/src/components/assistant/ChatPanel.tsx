@@ -6,7 +6,6 @@ import {
   ChevronDown,
   FileText,
   MailPlus,
-  Paperclip,
   Plus,
   Send,
   ShieldAlert,
@@ -315,13 +314,15 @@ export function ChatPanel() {
   const detail = useChatSession(sessionId);
   const openDraft = useOpenDraft();
   const [input, setInput] = useState('');
-  const [files, setFiles] = useState<{ id: string; filename: string; size: number }[]>([]);
+  // `preview`: a local URL of a pasted image, shown as a thumbnail until it is sent or removed.
+  const [files, setFiles] = useState<
+    { id: string; filename: string; size: number; preview?: string }[]
+  >([]);
   const [uploading, setUploading] = useState(false);
   const [live, setLive] = useState<LiveTurn>();
   const [busy, setBusy] = useState(false);
   const [memoryOpen, setMemoryOpen] = useState(false);
   const scroller = useRef<HTMLDivElement>(null);
-  const fileInput = useRef<HTMLInputElement>(null);
   const abort = useRef<AbortController | null>(null);
 
   // Default to the most recent conversation.
@@ -428,6 +429,7 @@ export function ChatPanel() {
     const sent = files;
     setInput('');
     setFiles([]);
+    for (const f of sent) if (f.preview) URL.revokeObjectURL(f.preview);
     const sessionForTurn = id;
     await run(
       (onEvent, signal) =>
@@ -441,13 +443,13 @@ export function ChatPanel() {
       void run((onEvent, signal) => resolveChatAction(sessionId, runId, approve, onEvent, signal));
   };
 
-  const attach = async (list: FileList | null) => {
-    if (!list) return;
+  const attach = async (list: File[]) => {
     setUploading(true);
     try {
-      for (const file of [...list]) {
+      for (const file of list) {
         const uploaded = await uploadChatFile(file);
-        setFiles((prev) => [...prev, uploaded]);
+        const preview = file.type.startsWith('image/') ? URL.createObjectURL(file) : undefined;
+        setFiles((prev) => [...prev, { ...uploaded, preview }]);
       }
     } catch (err) {
       toast(err instanceof Error ? err.message : String(err), 'error');
@@ -569,8 +571,8 @@ export function ChatPanel() {
         ) : empty ? (
           <div className="flex flex-col gap-2">
             <div className="rounded-2xl rounded-tl-sm bg-[#f2f6fc] px-4 py-3 text-sm text-gray-700">
-              Ask me about your mail, or have me label, archive, add todos and draft replies. I can
-              read attached images, PDFs, Word, Excel and text files.
+              Ask me about your mail, or have me label, archive, add todos and draft replies. Paste
+              images, PDFs, Word, Excel or text files into the message box and I can read them.
             </div>
             {SUGGESTIONS.map((s) => (
               <button
@@ -635,55 +637,68 @@ export function ChatPanel() {
       </div>
 
       <footer className="border-t border-gray-100 p-3">
-        {files.length > 0 && (
-          <div className="mb-2 flex flex-wrap gap-1.5">
-            {files.map((f) => (
-              <span
-                key={f.id}
-                className="flex items-center gap-1 rounded-md bg-gray-100 px-2 py-1 text-xs"
-              >
-                <FileText className="h-3.5 w-3.5" /> {f.filename}{' '}
-                <span className="text-gray-500">({fileSize(f.size)})</span>
-                <button
-                  type="button"
-                  aria-label={`Remove ${f.filename}`}
-                  onClick={() => setFiles(files.filter((x) => x.id !== f.id))}
+        {(files.length > 0 || uploading) && (
+          <div className="mb-2 flex flex-wrap items-end gap-1.5">
+            {files.map((f) => {
+              const remove = () => {
+                if (f.preview) URL.revokeObjectURL(f.preview);
+                setFiles(files.filter((x) => x.id !== f.id));
+              };
+              return f.preview ? (
+                <span key={f.id} className="group relative">
+                  <img
+                    src={f.preview}
+                    alt={f.filename}
+                    title={`${f.filename} (${fileSize(f.size)})`}
+                    className="h-16 w-16 rounded-xl border border-gray-200 object-cover"
+                  />
+                  <button
+                    type="button"
+                    aria-label={`Remove ${f.filename}`}
+                    onClick={remove}
+                    className="absolute -right-1.5 -top-1.5 rounded-full border border-gray-200 bg-white p-0.5 text-gray-700 shadow-sm hover:bg-gray-100"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </span>
+              ) : (
+                <span
+                  key={f.id}
+                  className="flex items-center gap-1 rounded-md bg-gray-100 px-2 py-1 text-xs"
                 >
-                  <X className="h-3 w-3" />
-                </button>
+                  <FileText className="h-3.5 w-3.5" /> {f.filename}{' '}
+                  <span className="text-gray-500">({fileSize(f.size)})</span>
+                  <button type="button" aria-label={`Remove ${f.filename}`} onClick={remove}>
+                    <X className="h-3 w-3" />
+                  </button>
+                </span>
+              );
+            })}
+            {uploading && (
+              <span className="flex items-center gap-1 rounded-md bg-gray-100 px-2 py-1 text-xs text-gray-600">
+                <Spinner className="h-3.5 w-3.5" /> Uploading…
               </span>
-            ))}
+            )}
           </div>
         )}
-        <div className="flex items-end gap-1 rounded-2xl border border-gray-300 px-2 py-1.5 focus-within:border-blue-600">
-          <IconButton
-            label="Attach files"
-            onClick={() => fileInput.current?.click()}
-            disabled={unavailable || uploading}
-          >
-            {uploading ? <Spinner className="h-4 w-4" /> : <Paperclip className="h-4 w-4" />}
-          </IconButton>
-          <input
-            ref={fileInput}
-            type="file"
-            multiple
-            hidden
-            accept="image/*,.pdf,.docx,.xlsx,.txt,.md,.csv,.json"
-            onChange={(e) => {
-              void attach(e.target.files);
-              e.target.value = '';
-            }}
-          />
+        <div className="flex items-end gap-1 rounded-2xl border border-gray-300 py-1.5 pl-3 pr-2 focus-within:border-blue-600">
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={onKey}
+            // Pasted screenshots, copied images and files (e.g. from Finder) are attached, not typed.
+            onPaste={(e) => {
+              const pasted = [...e.clipboardData.files];
+              if (pasted.length === 0) return;
+              e.preventDefault();
+              void attach(pasted);
+            }}
             rows={Math.min(6, Math.max(1, input.split('\n').length))}
             disabled={unavailable}
             placeholder={
               awaiting.length > 0
                 ? 'Approve or decline the action above first'
-                : 'Ask about your email…'
+                : 'Ask about your email… (paste images or files)'
             }
             aria-label="Message the assistant"
             className="max-h-40 flex-1 resize-none bg-transparent py-2 text-sm outline-none"
