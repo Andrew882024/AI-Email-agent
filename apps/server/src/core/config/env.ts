@@ -12,6 +12,10 @@ const EnvSchema = z.object({
     .url({ protocol: /^postgres(ql)?$/ })
     .default('postgres://ai_email:ai_email@localhost:5434/ai_email'),
   SERVER_PORT: z.coerce.number().int().min(1).max(65535).default(4317),
+  /** Interface to listen on; 0.0.0.0 inside a container, loopback otherwise. */
+  SERVER_HOST: z.string().min(1).default('127.0.0.1'),
+  /** Directory of the built web app to serve at / (production); unset in development (Vite serves it). */
+  WEB_ROOT: optionalString,
   /** Where users open the app; Google redirects back to <APP_URL>/api/auth/callback. */
   APP_URL: z
     .url({ protocol: /^https?$/ })
@@ -48,6 +52,8 @@ export interface AppConfig {
   logLevel: 'trace' | 'debug' | 'info' | 'warn' | 'error' | 'fatal';
   databaseUrl: string;
   serverPort: number;
+  serverHost: string;
+  webRoot?: string;
   /** Origin users open the app at, e.g. http://localhost:5173 (no trailing slash). */
   appUrl: string;
   allowedOrigins: string[];
@@ -79,6 +85,8 @@ export function parseConfig(env: Record<string, string | undefined>): AppConfig 
     logLevel: e.LOG_LEVEL,
     databaseUrl: e.DATABASE_URL,
     serverPort: e.SERVER_PORT,
+    serverHost: e.SERVER_HOST,
+    webRoot: e.WEB_ROOT,
     appUrl: e.APP_URL,
     allowedOrigins: e.ALLOWED_ORIGINS,
     dataDir: e.APP_DATA_DIR,

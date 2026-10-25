@@ -1,0 +1,14 @@
+# Production on the EC2 host, in ~/ai-email-agent (copied there by .github/workflows/cd.yml).
+# Only this container: the database is Supabase, and the host's nginx serves HTTPS.
+name: ai-email-agent
+
+services:
+  app:
+    image: ai-email-agent:${IMAGE_TAG:?set by deploy.sh}
+    container_name: ai_email_agent
+    restart: unless-stopped
+    env_file: app.env
+    ports:
+      - '127.0.0.1:4317:4317'
+    volumes:
+      - ./data:/data

@@ -1,0 +1,85 @@
+# Deploys AI Email Agent to the EC2 host it shares with other apps. Run it by hand:
+# Actions → CD → Run workflow. CI runs first; the image is built here and copied to the host (no
+# registry), started from ~/ai-email-agent, and served at https://$APP_DOMAIN by the host's nginx
+# (certificate from Let's Encrypt on the first run). See apps/server/deploy/deploy.sh.
+#
+# GitHub Environment "production":
+#   secrets  EC2_HOST, EC2_SSH_KEY (key of the host's "ubuntu" user),
+#            DATABASE_URL (Supabase session pooler), APP_SECRET_KEY, GOOGLE_CLIENT_ID,
+#            GOOGLE_CLIENT_SECRET, GEMINI_API_KEY
+#   vars     APP_DOMAIN (e.g. ai-email-agent.ucsd-cssa.com), CERTBOT_EMAIL
+name: CD
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  checks:
+    uses: ./.github/workflows/ci.yml
+
+  deploy:
+    needs: checks
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      APP_DOMAIN: ${{ vars.APP_DOMAIN }}
+      CERTBOT_EMAIL: ${{ vars.CERTBOT_EMAIL }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Build image
+        run: |
+          echo "IMAGE_TAG=${GITHUB_SHA::12}" >> "$GITHUB_ENV"
+          docker build -f apps/server/Dockerfile -t "ai-email-agent:${GITHUB_SHA::12}" .
+
+      - name: Bundle image, deploy files and configuration
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          APP_SECRET_KEY: ${{ secrets.APP_SECRET_KEY }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          mkdir bundle
+          docker save "ai-email-agent:${IMAGE_TAG}" | gzip > bundle/image.tar.gz
+          cp apps/server/deploy/* bundle/
+          # app.env: single-quoted so docker compose takes every value literally.
+          line() {
+            if [ -z "$2" ]; then echo "::error::$1 is not set"; exit 1; fi
+            case "$2" in *"'"*) echo "::error::$1 must not contain a single quote"; exit 1 ;; esac
+            printf "%s='%s'\n" "$1" "$2"
+          }
+          umask 077
+          {
+            line APP_URL "https://${APP_DOMAIN}"
+            line DATABASE_URL "$DATABASE_URL"
+            line APP_SECRET_KEY "$APP_SECRET_KEY"
+            line GOOGLE_CLIENT_ID "$GOOGLE_CLIENT_ID"
+            line GOOGLE_CLIENT_SECRET "$GOOGLE_CLIENT_SECRET"
+            line GEMINI_API_KEY "$GEMINI_API_KEY"
+          } > bundle/app.env
+          [ -n "$CERTBOT_EMAIL" ] || { echo "::error::CERTBOT_EMAIL is not set"; exit 1; }
+
+      - name: Copy to the host
+        uses: appleboy/scp-action@v1
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ubuntu
+          key: ${{ secrets.EC2_SSH_KEY }}
+          source: bundle/*
+          target: /home/ubuntu/ai-email-agent
+          strip_components: 1
+
+      - name: Start on the host
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ubuntu
+          key: ${{ secrets.EC2_SSH_KEY }}
+          envs: IMAGE_TAG,APP_DOMAIN,CERTBOT_EMAIL
+          command_timeout: 15m
+          script: bash /home/ubuntu/ai-email-agent/deploy.sh

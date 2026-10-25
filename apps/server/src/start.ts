@@ -19,7 +19,7 @@ export interface RunningServer {
   close(): Promise<void>;
 }
 
-/** Check the database, migrate, wire services, listen on loopback, and start background sync. */
+/** Check the database, migrate, wire services, listen, and start background sync. */
 export async function startServer(config: AppConfig): Promise<RunningServer> {
   const health = await checkDatabase(config.databaseUrl);
   if (!health.ok)
@@ -31,8 +31,9 @@ export async function startServer(config: AppConfig): Promise<RunningServer> {
     const app = await buildServer(services, {
       appUrl: config.appUrl,
       allowedOrigins: config.allowedOrigins,
+      webRoot: config.webRoot,
     });
-    await app.listen({ host: '127.0.0.1', port: config.serverPort });
+    await app.listen({ host: config.serverHost, port: config.serverPort });
     await services.scheduler.start();
     const { port } = app.server.address() as { port: number };
     services.logger.info({ port }, 'API listening');

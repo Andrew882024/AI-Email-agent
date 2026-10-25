@@ -13,6 +13,7 @@ describe('parseConfig', () => {
       logLevel: 'info',
       databaseUrl: 'postgres://ai_email:ai_email@localhost:5434/ai_email',
       serverPort: 4317,
+      serverHost: '127.0.0.1',
       appUrl: 'http://localhost:5173',
       allowedOrigins: ['http://localhost:5173', 'http://127.0.0.1:5173'],
       dataDir: join(homedir(), '.ai-email-agent'),

@@ -266,6 +266,31 @@ describe.skipIf(!testDatabaseUrl)('HTTP API', () => {
     });
   });
 
+  describe('web app', () => {
+    it('serves the built UI with SPA fallback, keeping API 404s as JSON', async () => {
+      const { mkdtemp, writeFile } = await import('node:fs/promises');
+      const { join } = await import('node:path');
+      const { tmpdir } = await import('node:os');
+      const root = await mkdtemp(join(tmpdir(), 'web-'));
+      await writeFile(join(root, 'index.html'), '<!doctype html><div id="root"></div>');
+      await writeFile(join(root, 'app.js'), 'console.log(1)');
+      const withWeb = await buildServer(
+        { repos, auth, cipher, tools, events, scheduler, logger },
+        { ...OPTIONS, webRoot: root },
+      );
+      const req = (url: string) =>
+        withWeb.inject({ method: 'GET', url, headers: { host: '127.0.0.1:4317' } });
+      expect((await req('/')).body).toContain('id="root"');
+      expect((await req('/app.js')).headers['content-type']).toMatch(/javascript/);
+      expect((await req('/mail')).body).toContain('id="root"');
+      const api404 = await req('/api/nope');
+      expect(api404.statusCode).toBe(404);
+      expect(api404.json().error.code).toBe('not_found');
+      expect((await req('/api/health')).json()).toEqual({ ok: true });
+      await withWeb.close();
+    });
+  });
+
   describe('several users', () => {
     it('keeps each user to their own mail, logs and chats', async () => {
       const other = await repos.accounts.upsert({ email: 'b@example.com', googleSub: 'b' });

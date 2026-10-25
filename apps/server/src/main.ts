@@ -4,7 +4,7 @@ import { StartupError, startServer } from './start.js';
 
 try {
   const server = await startServer(loadConfig());
-  console.log(`API listening on http://127.0.0.1:${server.port}`);
+  console.log(`Listening on port ${server.port}`);
   const shutdown = async () => {
     await server.close();
     process.exit(0);
