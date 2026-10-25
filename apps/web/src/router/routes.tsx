@@ -2,6 +2,7 @@ import { type ReactNode, useEffect } from 'react';
 import { Spinner } from '../components/ui/Spinner';
 import { LoginPage } from '../pages/login/LoginPage';
 import { MailPage } from '../pages/mail/MailPage';
+import { PrivacyPage } from '../pages/privacy/PrivacyPage';
 import { type AppLocation, navigate, useLocation } from './location';
 import { parseLoginHash } from './login-params';
 import { formatMailHash, parseMailHash } from './mail-params';
@@ -42,6 +43,11 @@ export const routes: RouteDef[] = [
     // The one place the mail page's parameters are parsed from the URL.
     render: ({ hash }) => <MailPage params={parseMailHash(hash)} />,
   },
+  {
+    // Public: no redirect, signed in or not.
+    path: '/privacy',
+    render: () => <PrivacyPage />,
+  },
 ];
 
 /** Renders the page for the current location, after applying the route's redirect. */
@@ -49,6 +55,8 @@ export function Router() {
   const location = useLocation();
   const session = useSession();
   const route = routes.find((r) => r.path === location.path);
+  // Pages without a redirect (public ones) don't wait for the session.
+  const waiting = session === 'loading' && !!route?.redirect;
   const target =
     route === undefined
       ? '/' // unknown path: start over at the entry
@@ -60,7 +68,7 @@ export function Router() {
     if (target) navigate(target, { replace: true });
   }, [target]);
 
-  if (!route?.render || target || session === 'loading') {
+  if (!route?.render || target || waiting) {
     return (
       <div className="flex h-screen items-center justify-center">
         <Spinner />

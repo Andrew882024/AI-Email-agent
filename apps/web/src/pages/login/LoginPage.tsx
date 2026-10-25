@@ -48,6 +48,9 @@ export function LoginPage({ params }: { params: LoginParams }) {
           <p className="text-xs text-gray-500">
             Keep every permission checked — the app needs Gmail, Tasks, and Drive access.
           </p>
+          <a href="/privacy" className="text-xs text-gray-500 underline hover:text-gray-700">
+            Privacy policy
+          </a>
         </div>
       </div>
     </div>
