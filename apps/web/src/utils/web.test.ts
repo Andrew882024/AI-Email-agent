@@ -92,31 +92,28 @@ describe('formatting', () => {
 
 describe('email document', () => {
   const options = {
-    allowRemote: false,
     origin: 'http://127.0.0.1:4317',
     cidUrl: (cid: string) => (cid === 'logo@x' ? '/api/messages/m1/attachments/2' : undefined),
   };
 
-  it('blocks scripts and remote content by default and rewrites inline images', () => {
-    const { doc, hasRemoteContent } = buildEmailDocument(
+  it('blocks scripts, allows remote images and rewrites inline images', () => {
+    const doc = buildEmailDocument(
       {
         html: '<img src="cid:logo@x"><img src="https://track.example/p.gif"><script>alert(1)</script>',
       },
       options,
     );
-    expect(hasRemoteContent).toBe(true);
     expect(doc).toContain('src="/api/messages/m1/attachments/2"');
     expect(doc).toContain("script-src 'none'");
-    expect(doc).toContain('img-src data: http://127.0.0.1:4317;');
-    expect(
-      buildEmailDocument({ html: '<p>hi</p>' }, { ...options, allowRemote: true }).doc,
-    ).toContain('img-src data: http://127.0.0.1:4317 https: http:');
+    expect(doc).toContain('img-src data: http://127.0.0.1:4317 https: http:');
   });
 
   it('renders plain text safely with links', () => {
     expect(textToHtml('<b> see https://x.com/a?b=1')).toBe(
       '&#60;b&#62; see <a href="https://x.com/a?b=1">https://x.com/a?b=1</a>',
     );
-    expect(buildEmailDocument({ text: 'hi' }, options).hasRemoteContent).toBe(false);
+    expect(buildEmailDocument({ text: 'hi' }, options)).toContain(
+      '<div style="white-space:pre-wrap">hi</div>',
+    );
   });
 });
