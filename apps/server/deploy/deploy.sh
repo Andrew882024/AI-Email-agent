@@ -77,6 +77,12 @@ fi
 apply_site nginx.conf
 
 echo "==> Checking https://${APP_DOMAIN}"
-curl -fsS "https://${APP_DOMAIN}/api/health"
+# nginx switches to the new config a moment after the reload; until then it may answer with
+# another site's certificate.
+for attempt in $(seq 1 10); do
+  curl -fsS "https://${APP_DOMAIN}/api/health" && break
+  [ "$attempt" -lt 10 ] || exit 1
+  sleep 2
+done
 echo
 echo "==> Deployed ${IMAGE_TAG}"
