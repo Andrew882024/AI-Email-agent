@@ -38,9 +38,9 @@ if ! healthy; then
 fi
 echo "$IMAGE_TAG" > current-tag
 # Keep this version and the one before it (to roll back to).
-sudo docker image ls "$IMAGE" --format '{{.Tag}}' |
-  grep -vxF -e "$IMAGE_TAG" -e "${previous:-none}" |
-  xargs -r -I{} sudo docker rmi "${IMAGE}:{}"
+old_tags=$(sudo docker image ls "$IMAGE" --format '{{.Tag}}' |
+  grep -vxF -e "$IMAGE_TAG" -e "${previous:-none}" || true) # none on the first deploys
+for tag in $old_tags; do sudo docker rmi "${IMAGE}:${tag}"; done
 
 # Put a site file in place; if nginx rejects it, restore what was there and stop.
 apply_site() {
@@ -70,6 +70,7 @@ fi
 # Renewed certificates only take effect once nginx reloads.
 hook=/etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh
 if ! sudo test -f "$hook"; then
+  sudo mkdir -p "$(dirname "$hook")"
   printf '#!/bin/sh\nsystemctl reload nginx\n' | sudo tee "$hook" >/dev/null
   sudo chmod 755 "$hook"
 fi
