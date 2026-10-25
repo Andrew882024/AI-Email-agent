@@ -31,6 +31,24 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      # Fail before building if the environment isn't set up (lists everything missing at once).
+      - name: Check configuration
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          APP_SECRET_KEY: ${{ secrets.APP_SECRET_KEY }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          missing=0
+          for name in APP_DOMAIN CERTBOT_EMAIL EC2_HOST EC2_SSH_KEY DATABASE_URL APP_SECRET_KEY \
+            GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET GEMINI_API_KEY; do
+            if [ -z "${!name}" ]; then echo "::error::$name is not set"; missing=1; fi
+          done
+          exit $missing
+
       - name: Build image
         run: |
           echo "IMAGE_TAG=${GITHUB_SHA::12}" >> "$GITHUB_ENV"
@@ -62,7 +80,6 @@ jobs:
             line GOOGLE_CLIENT_SECRET "$GOOGLE_CLIENT_SECRET"
             line GEMINI_API_KEY "$GEMINI_API_KEY"
           } > bundle/app.env
-          [ -n "$CERTBOT_EMAIL" ] || { echo "::error::CERTBOT_EMAIL is not set"; exit 1; }
 
       - name: Copy to the host
         uses: appleboy/scp-action@v1
