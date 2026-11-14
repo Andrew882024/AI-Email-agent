@@ -14,6 +14,7 @@ import Fastify, {
   type FastifyInstance,
   type FastifyReply,
   type FastifyRequest,
+  LogController,
 } from 'fastify';
 import { z } from 'zod';
 import { registerAuthRoutes, requestAccount } from './auth/index.js';
@@ -97,7 +98,7 @@ export async function buildServer(
   // pino's Logger satisfies Fastify's logger contract; typed as the base so the instance type stays default.
   const app = Fastify({
     loggerInstance: deps.logger as FastifyBaseLogger,
-    disableRequestLogging: true,
+    logController: new LogController({ disableRequestLogging: true }),
     // Tool calls may carry base64 attachments (send_email allows 18 MB of files).
     bodyLimit: 32 * 1024 * 1024,
   });
