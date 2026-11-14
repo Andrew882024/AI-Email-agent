@@ -1,6 +1,6 @@
 import { sql } from 'kysely';
-import type { Db } from '../../../shared/db/connection.js';
-import type { OAuthTokenRepository, StoredOAuthToken } from '../repositories.js';
+import type { Db } from '../shared/db/connection.js';
+import type { OAuthTokenRepository, StoredOAuthToken } from './repositories.js';
 
 /** The account's Google refresh token, kept in columns of `accounts`. */
 export class PgOAuthTokenRepository implements OAuthTokenRepository {

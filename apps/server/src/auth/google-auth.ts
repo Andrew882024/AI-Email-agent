@@ -1,8 +1,8 @@
 import { randomBytes } from 'node:crypto';
 import { CodeChallengeMethod, OAuth2Client } from 'google-auth-library';
-import type { AccountRepository } from '../db/repositories.js';
-import type { Account } from '../../shared/types.js';
-import type { Logger } from '../../shared/logging/system-logger.js';
+import type { AccountRepository } from './repositories.js';
+import type { Account } from '../shared/types.js';
+import type { Logger } from '../shared/logging/system-logger.js';
 import { AuthFlowError, isInvalidGrantError, ReauthRequiredError } from './errors.js';
 import { GOOGLE_SCOPES, REQUIRED_API_SCOPES } from './scopes.js';
 import type { TokenStore } from './token-store.js';

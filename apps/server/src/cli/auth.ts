@@ -1,7 +1,7 @@
 // Usage: auth [status|logout]   (default: status). Sign in through the app in the browser.
-import { AesGcmSecretCipher } from '../core/auth/secret-cipher.js';
-import { AUTH_CALLBACK_PATH, GoogleOAuthService } from '../core/auth/google-auth.js';
-import { EncryptedTokenStore } from '../core/auth/token-store.js';
+import { AesGcmSecretCipher } from '../auth/secret-cipher.js';
+import { AUTH_CALLBACK_PATH, GoogleOAuthService } from '../auth/google-auth.js';
+import { EncryptedTokenStore } from '../auth/token-store.js';
 import { loadConfig } from '../shared/config/env.js';
 import { createDb } from '../shared/db/connection.js';
 import { createPgRepositories } from '../core/db/pg/index.js';

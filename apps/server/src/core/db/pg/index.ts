@@ -1,13 +1,13 @@
 import type { Db } from '../../../shared/db/connection.js';
 import type { Repositories } from '../repositories.js';
-import { PgAccountRepository } from './account-repository.js';
+import { PgAccountRepository } from '../../../auth/account-repository.js';
 import { PgChatFileRepository, PgChatRepository, PgMemoryRepository } from './chat-repository.js';
 import { PgActionLogRepository } from './action-log-repository.js';
 import { PgLabelRepository } from './label-repository.js';
 import { PgMessageRepository } from './message-repository.js';
-import { PgOAuthTokenRepository } from './oauth-token-repository.js';
+import { PgOAuthTokenRepository } from '../../../auth/oauth-token-repository.js';
 import { PgOutboxRepository } from './outbox-repository.js';
-import { PgSessionRepository } from './session-repository.js';
+import { PgSessionRepository } from '../../../auth/session-repository.js';
 import { PgSyncStateRepository } from './sync-state-repository.js';
 import { PgVectorStore } from './vector-store.js';
 import { PgWorkflowRepository } from './workflow-repository.js';

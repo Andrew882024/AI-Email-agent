@@ -1,5 +1,5 @@
-import { ReauthRequiredError } from '../auth/errors.js';
-import type { GoogleAuthProvider } from '../auth/google-auth.js';
+import { ReauthRequiredError } from '../../auth/errors.js';
+import type { GoogleAuthProvider } from '../../auth/google-auth.js';
 import type { Repositories } from '../db/repositories.js';
 import type { EventBus } from '../../shared/events/event-bus.js';
 import type { Logger } from '../../shared/logging/system-logger.js';

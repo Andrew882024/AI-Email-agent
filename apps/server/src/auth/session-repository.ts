@@ -1,5 +1,5 @@
-import type { Db } from '../../../shared/db/connection.js';
-import type { SessionRepository, StoredSession } from '../repositories.js';
+import type { Db } from '../shared/db/connection.js';
+import type { SessionRepository, StoredSession } from './repositories.js';
 
 export class PgSessionRepository implements SessionRepository {
   constructor(private readonly db: Db) {}

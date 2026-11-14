@@ -2,7 +2,6 @@ import cookie from '@fastify/cookie';
 import cors from '@fastify/cors';
 import fastifyStatic from '@fastify/static';
 import {
-  type Account,
   type AgentEvent,
   type ChatAgent,
   type ChatFileStore,
@@ -10,7 +9,6 @@ import {
   UnsupportedFileError,
   type Actor,
   type AppEventName,
-  AuthFlowError,
   type EventBus,
   type GoogleAuthProvider,
   type Logger,
@@ -28,7 +26,9 @@ import Fastify, {
   type FastifyRequest,
 } from 'fastify';
 import { z } from 'zod';
-import { SESSION_COOKIE, Sessions } from './session.js';
+import { registerAuthRoutes, requestAccount } from './auth/routes.js';
+import { Sessions } from './auth/sessions.js';
+import { HttpError } from './shared/http.js';
 
 export interface ServerDeps {
   repos: Repositories;
@@ -56,16 +56,6 @@ export interface ServerOptions {
   webRoot?: string;
 }
 
-class HttpError extends Error {
-  constructor(
-    readonly statusCode: number,
-    readonly code: string,
-    message: string,
-  ) {
-    super(message);
-  }
-}
-
 const STATUS: Record<ToolErrorCode, number> = {
   unknown_tool: 404,
   invalid_input: 400,
@@ -75,16 +65,6 @@ const STATUS: Record<ToolErrorCode, number> = {
 };
 
 const LOCAL_HOSTNAMES = new Set(['localhost', '127.0.0.1', '[::1]']);
-/** Holds the OAuth state and PKCE verifier between leaving for Google and coming back. */
-const SIGN_IN_COOKIE = 'sign_in';
-const SIGN_IN_MS = 10 * 60_000;
-
-declare module 'fastify' {
-  interface FastifyRequest {
-    /** The signed-in account of this request's session, if any. */
-    accountId?: string;
-  }
-}
 
 /** Attachment types safe to show inline; anything else (HTML, SVG, ...) is forced to download. */
 const INLINE_TYPES = new Set([
@@ -170,6 +150,8 @@ export async function buildServer(
     }
   };
   const sessions = new Sessions(repos.sessions, appUrl.protocol === 'https:');
+  const access = requestAccount(sessions, repos.accounts);
+  const { requireAccount } = access;
 
   app.addHook('onRequest', async (req, reply) => {
     if (!allowedHosts.has(hostnameOf(req.headers.host))) {
@@ -186,9 +168,7 @@ export async function buildServer(
     methods: ['GET', 'POST', 'PATCH', 'DELETE'],
     credentials: true,
   });
-  app.addHook('onRequest', async (req, reply) => {
-    req.accountId = await sessions.accountOf(req, reply);
-  });
+  app.addHook('onRequest', access.hook);
 
   app.setErrorHandler((err: unknown, _req, reply) => {
     if (err instanceof ToolError) {
@@ -216,15 +196,6 @@ export async function buildServer(
     return reply.code(500).send({ error: { code: 'internal', message: 'Internal error' } });
   });
 
-  /** The account this request's browser is signed in as. */
-  async function currentAccount(req: FastifyRequest): Promise<Account | undefined> {
-    return req.accountId ? repos.accounts.getById(req.accountId) : undefined;
-  }
-  async function requireAccount(req: FastifyRequest): Promise<Account> {
-    const account = await currentAccount(req);
-    if (!account) throw new HttpError(401, 'not_signed_in', 'Sign in to continue');
-    return account;
-  }
   async function invoke(req: FastifyRequest, name: string, input: unknown) {
     const account = await requireAccount(req);
     return tools.invoke(name, { accountId: account.id, actor: 'user' }, input);
@@ -233,91 +204,20 @@ export async function buildServer(
   // ---------- auth ----------
   app.get('/api/health', async () => ({ ok: true }));
 
-  app.get('/api/auth/status', async (req) => {
-    const account = await currentAccount(req);
-    return {
-      account: account
-        ? { id: account.id, email: account.email, displayName: account.displayName }
-        : null,
-      connected: account ? await auth.isConnected(account.id) : false,
-    };
-  });
-
-  const signInCookie = { path: '/api/auth', httpOnly: true, sameSite: 'lax' as const };
-  const signInState = z.object({ state: z.string(), codeVerifier: z.string() });
-
-  /** Sign in: off to Google, which comes back to /api/auth/callback. `?consent=1` asks for every permission again. */
-  app.get<{ Querystring: { consent?: string } }>('/api/auth/google', async (req, reply) => {
-    const request = await auth.beginAuth({ consent: req.query.consent === '1' });
-    const sealed = await deps.cipher.encrypt(
-      JSON.stringify({ state: request.state, codeVerifier: request.codeVerifier }),
-    );
-    reply.setCookie(SIGN_IN_COOKIE, sealed, {
-      ...signInCookie,
-      secure: appUrl.protocol === 'https:',
-      maxAge: SIGN_IN_MS / 1000,
-    });
-    return reply.redirect(request.url);
-  });
-
-  /** Google sends the browser back here; on success it is signed in and lands on the mail page. */
-  app.get<{ Querystring: { code?: string; state?: string; error?: string } }>(
-    '/api/auth/callback',
-    async (req, reply) => {
-      const sealed = req.cookies[SIGN_IN_COOKIE];
-      reply.clearCookie(SIGN_IN_COOKIE, { path: signInCookie.path });
-      const fail = (message: string) =>
-        reply.redirect(`/login#error=${encodeURIComponent(message)}`);
-      if (req.query.error)
-        return fail(
-          req.query.error === 'access_denied'
-            ? 'Sign-in was cancelled.'
-            : `Google sign-in failed (${req.query.error}).`,
-        );
-      const saved = sealed
-        ? await deps.cipher
-            .decrypt(sealed)
-            .then((json) => signInState.parse(JSON.parse(json)))
-            .catch(() => undefined)
-        : undefined;
-      if (!saved || !req.query.code || saved.state !== req.query.state)
-        return fail('That sign-in expired or was started in another tab. Try again.');
-
-      let result;
-      try {
-        result = await auth.finishAuth({ code: req.query.code, codeVerifier: saved.codeVerifier });
-      } catch (err) {
-        if (err instanceof AuthFlowError) return fail(err.message);
-        deps.logger.error({ err }, 'sign-in failed');
-        return fail('Sign-in failed. Try again.');
-      }
-      if ('consentRequired' in result) return reply.redirect('/api/auth/google?consent=1');
-      await sessions.end(req, reply); // a previous account's session in this browser
-      await sessions.create(reply, result.account.id);
-      scheduler.addAccount(result.account.id);
-      return reply.redirect('/mail');
+  registerAuthRoutes(app, {
+    auth,
+    cipher: deps.cipher,
+    sessions,
+    accounts: repos.accounts,
+    access,
+    appUrl,
+    logger: deps.logger,
+    onSignedIn: (accountId) => scheduler.addAccount(accountId),
+    beforeAccountDelete: async (accountId) => {
+      await scheduler.removeAccount(accountId);
+      await deps.chat?.files.deleteForAccount(accountId);
+      await repos.actionLogs.deleteForAccount(accountId);
     },
-  );
-
-  /** Sign this browser out. Background sync and workflows keep running. */
-  app.post('/api/auth/logout', async (req, reply) => {
-    await sessions.end(req, reply);
-    return { ok: true };
-  });
-
-  /**
-   * Delete the account: revoke Google access and erase everything this app keeps for it (mail
-   * copy, index, chats, memory, workflows, uploads, logs). Gmail and Drive are not touched.
-   */
-  app.delete('/api/account', async (req, reply) => {
-    const account = await requireAccount(req);
-    await auth.revoke(account.id);
-    await scheduler.removeAccount(account.id);
-    await deps.chat?.files.deleteForAccount(account.id);
-    await repos.actionLogs.deleteForAccount(account.id);
-    await repos.accounts.delete(account.id); // the rest goes with it (ON DELETE CASCADE)
-    reply.clearCookie(SESSION_COOKIE, { path: '/' });
-    return { ok: true };
   });
 
   // ---------- tools ----------

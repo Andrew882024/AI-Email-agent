@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { ReauthRequiredError } from '../auth/errors.js';
+import { ReauthRequiredError } from '../../auth/errors.js';
 import type { Actor } from '../../shared/types.js';
 import type { ActionLogger } from '../../shared/logging/action-logger.js';
 import { NotFoundError } from '../sync/mailbox.js';

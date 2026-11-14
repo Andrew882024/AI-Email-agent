@@ -1,8 +1,8 @@
 // Wires the core services for command-line tools (the server will have its own composition root).
 import { join } from 'node:path';
-import { AUTH_CALLBACK_PATH, GoogleOAuthService } from '../core/auth/google-auth.js';
-import { AesGcmSecretCipher } from '../core/auth/secret-cipher.js';
-import { EncryptedTokenStore } from '../core/auth/token-store.js';
+import { AUTH_CALLBACK_PATH, GoogleOAuthService } from '../auth/google-auth.js';
+import { AesGcmSecretCipher } from '../auth/secret-cipher.js';
+import { EncryptedTokenStore } from '../auth/token-store.js';
 import { loadConfig } from '../shared/config/env.js';
 import { createDb } from '../shared/db/connection.js';
 import { createPgRepositories } from '../core/db/pg/index.js';

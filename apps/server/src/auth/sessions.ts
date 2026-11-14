@@ -3,7 +3,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 import type { CookieSerializeOptions } from '@fastify/cookie';
 import type { FastifyReply, FastifyRequest } from 'fastify';
-import type { SessionRepository } from './core/index.js';
+import type { SessionRepository } from './repositories.js';
 
 export const SESSION_COOKIE = 'sid';
 const SESSION_MS = 30 * 24 * 3600_000;

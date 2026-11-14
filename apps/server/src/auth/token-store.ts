@@ -1,4 +1,4 @@
-import type { OAuthTokenRepository } from '../db/repositories.js';
+import type { OAuthTokenRepository } from './repositories.js';
 import { ReauthRequiredError } from './errors.js';
 import type { SecretCipher } from './secret-cipher.js';
 

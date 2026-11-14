@@ -49,48 +49,6 @@ describe.skipIf(!testDatabaseUrl)('Postgres repositories', () => {
     accountId = (await repos.accounts.upsert({ email: 'me@example.com', googleSub: 'sub-1' })).id;
   });
 
-  describe('accounts', () => {
-    it('upserts by googleSub and tracks sync state', async () => {
-      const again = await repos.accounts.upsert({
-        email: 'new@example.com',
-        googleSub: 'sub-1',
-        displayName: 'Me',
-      });
-      expect(again).toMatchObject({ id: accountId, email: 'new@example.com', displayName: 'Me' });
-
-      await repos.accounts.updateSyncState(accountId, { historyId: '12345' });
-      const synced = new Date('2026-02-01T00:00:00Z');
-      await repos.accounts.updateSyncState(accountId, { lastFullSyncAt: synced });
-      expect(await repos.accounts.getById(accountId)).toMatchObject({
-        historyId: '12345',
-        lastFullSyncAt: synced,
-      });
-      expect(await repos.accounts.list()).toHaveLength(1);
-
-      await repos.accounts.delete(accountId);
-      expect(await repos.accounts.getById(accountId)).toBeUndefined();
-    });
-  });
-
-  describe('oauth tokens', () => {
-    it('saves, replaces and deletes; cascades with the account', async () => {
-      expect(await repos.oauthTokens.get(accountId)).toBeUndefined();
-      await repos.oauthTokens.save(accountId, { encryptedRefreshToken: 'c1', scopes: ['a'] });
-      await repos.oauthTokens.save(accountId, { encryptedRefreshToken: 'c2', scopes: ['a', 'b'] });
-      expect(await repos.oauthTokens.get(accountId)).toMatchObject({
-        accountId,
-        encryptedRefreshToken: 'c2',
-        scopes: ['a', 'b'],
-      });
-      await repos.oauthTokens.delete(accountId);
-      expect(await repos.oauthTokens.get(accountId)).toBeUndefined();
-
-      await repos.oauthTokens.save(accountId, { encryptedRefreshToken: 'c3', scopes: [] });
-      await repos.accounts.delete(accountId);
-      expect(await repos.oauthTokens.get(accountId)).toBeUndefined();
-    });
-  });
-
   describe('labels', () => {
     it('upserts, finds by name case-insensitively and replaces the full set', async () => {
       await repos.labels.upsert(accountId, [

@@ -1,7 +1,7 @@
 import { type Credentials, OAuth2Client } from 'google-auth-library';
 import { describe, expect, it, vi } from 'vitest';
-import type { AccountRepository } from '../db/repositories.js';
-import type { Account } from '../../shared/types.js';
+import type { AccountRepository } from './repositories.js';
+import type { Account } from '../shared/types.js';
 import { AuthFlowError, isInvalidGrantError, ReauthRequiredError } from './errors.js';
 import { GoogleOAuthService } from './google-auth.js';
 import { GOOGLE_SCOPES } from './scopes.js';
