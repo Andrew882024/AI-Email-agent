@@ -6,12 +6,11 @@ import {
   type TestDatabase,
   testDatabaseUrl,
 } from '../../../test/helpers/db.js';
-import { recordActions } from '../../../test/helpers/actions.js';
 import { FakeGateways } from '../../../test/helpers/fake-google.js';
 import { createPgRepositories } from '../db/pg/index.js';
 import type { Repositories } from '../db/repositories.js';
 import { EventBus } from '../events/event-bus.js';
-import { type ActionEntry, ActionLogger } from '../logging/action-logger.js';
+import { ActionLogger } from '../logging/action-logger.js';
 import { MailSync } from '../sync/mail-sync.js';
 import { HybridSearch } from '../rag/hybrid-search.js';
 import { MailboxService } from '../sync/mailbox.js';
@@ -29,7 +28,6 @@ describe.skipIf(!testDatabaseUrl)('email tools', () => {
   let tools: ToolRegistry;
   let worker: OutboxWorker;
   let ctx: ToolContext;
-  let logged: ActionEntry[];
   const logger = pino({ level: 'silent' });
 
   const call = (name: string, input: unknown = {}) => tools.invoke(name, ctx, input);
@@ -48,6 +46,7 @@ describe.skipIf(!testDatabaseUrl)('email tools', () => {
 
   beforeEach(async () => {
     await sql`truncate accounts cascade`.execute(t.db);
+    await sql`truncate action_logs`.execute(t.db);
     const accountId = (
       await repos.accounts.upsert({
         email: 'me@example.com',
@@ -58,8 +57,7 @@ describe.skipIf(!testDatabaseUrl)('email tools', () => {
     ctx = { accountId, actor: 'user' };
     google = new FakeGateways();
     const events = new EventBus(logger);
-    const { actions, entries } = recordActions();
-    logged = entries;
+    const actions = new ActionLogger(repos.actionLogs, logger);
     const mailSync = new MailSync({
       repos,
       gateways: google,
@@ -240,7 +238,7 @@ describe.skipIf(!testDatabaseUrl)('email tools', () => {
     it('does not log reads', async () => {
       await call('list_emails');
       await call('get_email', { messageId: 'm1' });
-      expect(logged.filter((e) => e.actor === 'user')).toEqual([]);
+      expect((await repos.actionLogs.query({ actor: 'user', limit: 10 })).items).toEqual([]);
     });
   });
 
@@ -258,8 +256,8 @@ describe.skipIf(!testDatabaseUrl)('email tools', () => {
       expect(google.fakeGmail.labelsOf('m1')).toEqual(['INBOX', 'UNREAD']);
       expect(google.fakeGmail.labelsOf('m2')).toEqual(['INBOX', 'STARRED']);
 
-      const items = logged.filter((e) => e.actor === 'user');
-      expect(items.map((e) => e.action)).toEqual([
+      const { items } = await repos.actionLogs.query({ actor: 'user', limit: 10 });
+      expect(items.map((e) => e.action).reverse()).toEqual([
         'mark_read',
         'star',
         'archive',
@@ -267,7 +265,7 @@ describe.skipIf(!testDatabaseUrl)('email tools', () => {
         'mark_unread',
         'move_to_inbox',
       ]);
-      expect(items[1]).toMatchObject({
+      expect(items.at(-2)).toMatchObject({
         targetIds: ['m1', 'm2'],
         status: 'success',
         params: { messageIds: ['m1', 'm2'] },
@@ -280,7 +278,8 @@ describe.skipIf(!testDatabaseUrl)('email tools', () => {
         message: expect.stringContaining('nope'),
       });
       expect(await labelsOf('m1')).not.toContain('STARRED');
-      expect(logged.at(-1)).toMatchObject({ action: 'star', status: 'error' });
+      const { items } = await repos.actionLogs.query({ limit: 1 });
+      expect(items[0]).toMatchObject({ action: 'star', status: 'error' });
     });
 
     it('validates input', async () => {
@@ -352,7 +351,7 @@ describe.skipIf(!testDatabaseUrl)('email tools', () => {
       expect(sent?.raw).toMatch(/^To: Ann <ann@example\.com>$/m);
       expect(sent?.raw).toMatch(/^Bcc: boss@example\.com$/m);
       expect(sent?.raw).toContain(b64('hi there'));
-      const entry = logged.filter((e) => e.action === 'send_email').at(-1);
+      const [entry] = (await repos.actionLogs.query({ action: 'send_email', limit: 1 })).items;
       expect(entry?.params).toEqual({
         to: ['Ann <ann@example.com>'],
         bcc: ['boss@example.com'],
@@ -396,7 +395,7 @@ describe.skipIf(!testDatabaseUrl)('email tools', () => {
 
   async function mailSyncAgain() {
     const events = new EventBus(logger);
-    const actions = new ActionLogger(logger);
+    const actions = new ActionLogger(repos.actionLogs, logger);
     await new MailSync({
       repos,
       gateways: google,

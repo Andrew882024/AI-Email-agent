@@ -108,6 +108,19 @@ export interface OutboxOpsTable {
   updated_at: Generated<Date>;
 }
 
+export interface ActionLogsTable {
+  id: Int8Id;
+  ts: Generated<Date>;
+  account_id: string | null;
+  actor: string;
+  action: string;
+  target_ids: Generated<string[]>;
+  params: Json<unknown> | null;
+  status: 'success' | 'error';
+  error: string | null;
+  duration_ms: number | null;
+}
+
 export interface ChatSessionsTable {
   id: Generated<string>;
   account_id: string;
@@ -205,6 +218,7 @@ export interface Database {
   messages: MessagesTable;
   todos: TodosTable;
   outbox_ops: OutboxOpsTable;
+  action_logs: ActionLogsTable;
   chat_sessions: ChatSessionsTable;
   chat_messages: ChatMessagesTable;
   memory_items: MemoryItemsTable;

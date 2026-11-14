@@ -1,7 +1,6 @@
 import { sql } from 'kysely';
 import { pino } from 'pino';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { recordActions } from '../../../test/helpers/actions.js';
 import { FakeGateways, googleError } from '../../../test/helpers/fake-google.js';
 import {
   createTestDatabase,
@@ -12,7 +11,7 @@ import { ReauthRequiredError } from '../auth/errors.js';
 import { createPgRepositories } from '../db/pg/index.js';
 import type { Repositories } from '../db/repositories.js';
 import { type AppEventName, type AppEvents, EventBus } from '../events/event-bus.js';
-import type { ActionEntry } from '../logging/action-logger.js';
+import { ActionLogger } from '../logging/action-logger.js';
 import { FakeEmbeddings } from '../../../test/helpers/fake-llm.js';
 import { EmailIndexer } from '../rag/indexer.js';
 import { MailSync } from './mail-sync.js';
@@ -35,11 +34,10 @@ describe.skipIf(!testDatabaseUrl)('sync', () => {
   let mailbox: MailboxService;
   let worker: OutboxWorker;
   let tasksSync: TasksSync;
-  const logged: ActionEntry[] = [];
   const logger = pino({ level: 'silent' });
 
   const build = (windowDays = 30) => {
-    const { actions } = recordActions(logged);
+    const actions = new ActionLogger(repos.actionLogs, logger);
     mailSync = new MailSync({
       repos,
       gateways: google,
@@ -74,7 +72,7 @@ describe.skipIf(!testDatabaseUrl)('sync', () => {
 
   beforeEach(async () => {
     await sql`truncate accounts cascade`.execute(t.db);
-    logged.length = 0;
+    await sql`truncate action_logs`.execute(t.db);
     accountId = (await repos.accounts.upsert({ email: 'me@example.com', googleSub: 'sub' })).id;
     google = new FakeGateways();
     events = new EventBus(logger);
@@ -112,8 +110,8 @@ describe.skipIf(!testDatabaseUrl)('sync', () => {
       expect(eventsOf('labels.changed')).toHaveLength(1);
       expect(eventsOf('message.added')).toEqual([]); // backfill is not new mail
       expect(eventsOf('sync.status').at(-1)).toEqual({ accountId, phase: 'idle' });
-      const logs = logged.filter((e) => e.action === 'sync.full');
-      expect(logs.at(-1)).toMatchObject({
+      const { items: logs } = await repos.actionLogs.query({ action: 'sync.full', limit: 5 });
+      expect(logs[0]).toMatchObject({
         actor: 'sync',
         status: 'success',
         params: expect.objectContaining({ synced: 5 }),
@@ -258,8 +256,8 @@ describe.skipIf(!testDatabaseUrl)('sync', () => {
       expect(eventsOf('outbox.failed')).toEqual([
         { accountId, op: 'modify_labels', error: 'Invalid label' },
       ]);
-      const items = logged.filter((e) => e.action === 'outbox.modify_labels');
-      expect(items.at(-1)).toMatchObject({
+      const { items } = await repos.actionLogs.query({ action: 'outbox.modify_labels', limit: 5 });
+      expect(items[0]).toMatchObject({
         status: 'error',
         targetIds: ['m1'],
         error: 'Invalid label',

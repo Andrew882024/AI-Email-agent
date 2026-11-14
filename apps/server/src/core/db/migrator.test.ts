@@ -41,6 +41,7 @@ const HISTORY: { name: string; adds?: string[]; drops?: string[] }[] = [
     drops: ['message_labels', 'attachments', 'email_embeddings'],
   },
   { name: '0012_merge_tool_runs', drops: ['tool_runs'] },
+  { name: '0013_restore_action_logs', adds: ['action_logs'] },
 ];
 
 /** The app tables after the first `count` migrations, sorted. */

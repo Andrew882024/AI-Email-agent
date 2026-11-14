@@ -5,7 +5,7 @@ export type { Logger } from 'pino';
 
 /**
  * Process-wide structured logger: stdout plus, when `logDir` is given, `<logDir>/app.jsonl`.
- * ActionLogger writes every action here too, so the file is the audit trail.
+ * Action log entries are also written here (see ActionLogger) so the file is a complete trail.
  */
 export function createSystemLogger(options: {
   level: Level;

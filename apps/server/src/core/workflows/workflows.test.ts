@@ -6,7 +6,6 @@ import {
   type TestDatabase,
   testDatabaseUrl,
 } from '../../../test/helpers/db.js';
-import { recordActions } from '../../../test/helpers/actions.js';
 import { FakeGateways } from '../../../test/helpers/fake-google.js';
 import { FakeEmbeddings, ScriptedLLM } from '../../../test/helpers/fake-llm.js';
 import { type AgentEvent, ChatAgent } from '../agent/agent.js';
@@ -16,7 +15,7 @@ import { createPgRepositories } from '../db/pg/index.js';
 import type { Repositories } from '../db/repositories.js';
 import { EventBus } from '../events/event-bus.js';
 import type { GenerateRequest } from '../llm/types.js';
-import type { ActionEntry } from '../logging/action-logger.js';
+import { ActionLogger } from '../logging/action-logger.js';
 import { HybridSearch } from '../rag/hybrid-search.js';
 import { EmailIndexer } from '../rag/indexer.js';
 import { MailSync } from '../sync/mail-sync.js';
@@ -79,7 +78,6 @@ describe.skipIf(!testDatabaseUrl)('workflows', () => {
   let decide: (text: string) => { match: boolean; confidence: number };
   let llm: ScriptedLLM;
   const logger = pino({ level: 'silent' });
-  const logged: ActionEntry[] = [];
   const embeddings = new FakeEmbeddings();
 
   const invoiceRule = (over: Partial<WorkflowSpec> = {}): WorkflowSpec => ({
@@ -104,11 +102,11 @@ describe.skipIf(!testDatabaseUrl)('workflows', () => {
 
   beforeEach(async () => {
     await sql`truncate accounts cascade`.execute(t.db);
-    logged.length = 0;
+    await sql`truncate action_logs`.execute(t.db);
     accountId = (await repos.accounts.upsert({ email: 'me@example.com', googleSub: 's' })).id;
     google = new FakeGateways();
     events = new EventBus(logger);
-    const { actions } = recordActions(logged);
+    const actions = new ActionLogger(repos.actionLogs, logger);
     const gmail = google.fakeGmail;
     gmail.add(
       {
@@ -234,7 +232,7 @@ describe.skipIf(!testDatabaseUrl)('workflows', () => {
     expect(await labelsOf('news')).not.toContain(bills!.id);
     expect((await repos.workflows.get(preview.workflowId))?.status).toBe('active');
     expect(await repos.workflows.counts(preview.workflowId)).toMatchObject({ applied: 4 });
-    const log = logged.filter((e) => e.action === 'add_label').at(-1);
+    const [log] = (await repos.actionLogs.query({ action: 'add_label', limit: 1 })).items;
     expect(log).toMatchObject({ actor: `workflow:${preview.workflowId}`, status: 'success' });
     await worker.drain(accountId);
     expect(google.fakeGmail.labelsOf('inv2')).toContain(bills!.id);
@@ -454,7 +452,7 @@ describe.skipIf(!testDatabaseUrl)('workflows', () => {
     const chatLlm = new ScriptedLLM((_r, kind) =>
       kind === 'generate' ? '{"operations":[]}' : (turns.shift()!() as never),
     );
-    const { actions } = recordActions(logged);
+    const actions = new ActionLogger(repos.actionLogs, logger);
     const agent = new ChatAgent({
       repos,
       llm: chatLlm,
@@ -580,7 +578,7 @@ describe.skipIf(!testDatabaseUrl)('workflows', () => {
         documentId: sheet!.id,
         folderId: folder!.id,
       });
-      const logs = logged.filter((l) =>
+      const logs = (await repos.actionLogs.query({ limit: 50 })).items.filter((l) =>
         ['create_document', 'append_to_document'].includes(l.action),
       );
       expect(logs.map((l) => [l.action, l.actor, l.status]).sort()).toEqual([

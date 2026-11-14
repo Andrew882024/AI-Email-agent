@@ -2,6 +2,9 @@
 // them for Postgres. A MySQL port would add db/mysql/ with the same interfaces.
 import type {
   Account,
+  ActionLogEntry,
+  ActionStatus,
+  Actor,
   Label,
   Message,
   MessageSummary,
@@ -238,6 +241,37 @@ export interface OutboxRepository {
   requeueInProgress(): Promise<number>;
 }
 
+export interface NewActionLog {
+  accountId?: string;
+  actor: Actor;
+  action: string;
+  targetIds?: string[];
+  params?: unknown;
+  status: ActionStatus;
+  error?: string;
+  durationMs?: number;
+}
+
+export interface ActionLogQuery {
+  accountId?: string;
+  actor?: Actor;
+  action?: string;
+  status?: ActionStatus;
+  since?: Date;
+  until?: Date;
+  /** Clamped to 1..500. */
+  limit: number;
+  cursor?: string;
+}
+
+export interface ActionLogRepository {
+  insert(entry: NewActionLog): Promise<ActionLogEntry>;
+  /** Newest first. */
+  query(filter: ActionLogQuery): Promise<Page<ActionLogEntry>>;
+  /** Forget an account's history (when the user deletes their account). */
+  deleteForAccount(accountId: string): Promise<void>;
+}
+
 export interface SyncStateRepository {
   get(accountId: string): Promise<SyncState>;
   /**
@@ -386,6 +420,7 @@ export interface Repositories {
   messages: MessageRepository;
   todos: TodoRepository;
   outbox: OutboxRepository;
+  actionLogs: ActionLogRepository;
   syncState: SyncStateRepository;
   vectors: VectorStore;
   chats: ChatRepository;

@@ -323,6 +323,19 @@ export interface WorkflowDecision {
 
 export type ActionStatus = 'success' | 'error';
 
+export interface ActionLogEntry {
+  id: string;
+  ts: Date;
+  accountId?: string;
+  actor: Actor;
+  action: string;
+  targetIds: string[];
+  params?: unknown;
+  status: ActionStatus;
+  error?: string;
+  durationMs?: number;
+}
+
 export interface Page<T> {
   items: T[];
   /** Opaque; pass back to fetch the next page. Absent on the last page. */
