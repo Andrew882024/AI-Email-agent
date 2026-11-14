@@ -3,9 +3,9 @@ import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { extname, join } from 'node:path';
 import mammoth from 'mammoth';
 import readXlsxFile from 'read-excel-file/node';
-import type { ChatFileRepository } from '../db/repositories.js';
-import type { ChatFile } from '../../shared/types.js';
-import type { Part } from '../../shared/llm/types.js';
+import type { ChatFileRepository } from './repositories.js';
+import type { ChatFile } from '../shared/types.js';
+import type { Part } from '../shared/llm/types.js';
 
 export const MAX_FILE_BYTES = 20 * 1024 * 1024;
 const MAX_TEXT_CHARS = 100_000;

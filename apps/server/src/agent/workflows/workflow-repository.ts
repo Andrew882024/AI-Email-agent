@@ -5,11 +5,11 @@ import type {
   WorkflowAction,
   WorkflowDecision,
   WorkflowStatus,
-} from '../../../shared/types.js';
-import type { Db } from '../../../shared/db/connection.js';
+} from '../../shared/types.js';
+import type { Db } from '../../shared/db/connection.js';
 import type { NewWorkflow, WorkflowRepository } from '../repositories.js';
-import type { WorkflowDecisionsTable, WorkflowsTable } from '../../../shared/db/schema.js';
-import { chunk, clamp } from '../../../shared/db/util.js';
+import type { WorkflowDecisionsTable, WorkflowsTable } from '../../shared/db/schema.js';
+import { chunk, clamp } from '../../shared/db/util.js';
 
 function toWorkflow(row: Selectable<WorkflowsTable>): Workflow {
   return {

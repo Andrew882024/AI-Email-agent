@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { Repositories } from '../db/repositories.js';
+import type { Repositories } from '../../core/db/repositories.js';
 import { defineTool, type ToolContext } from '../../shared/tool-registry.js';
 import { DOCUMENT_NAMES, type WorkflowEngine } from './engine.js';
 

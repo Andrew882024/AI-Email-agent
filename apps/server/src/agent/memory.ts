@@ -1,10 +1,10 @@
 import { z } from 'zod';
-import type { Repositories } from '../db/repositories.js';
-import type { MemoryCategory, MemoryItem } from '../../shared/types.js';
-import { generateObject } from '../../shared/llm/structured.js';
-import type { EmbeddingProvider, LLMProvider } from '../../shared/llm/types.js';
-import type { ActionLogger } from '../../shared/logging/action-logger.js';
-import type { Logger } from '../../shared/logging/system-logger.js';
+import type { Repositories } from '../core/db/repositories.js';
+import type { MemoryCategory, MemoryItem } from '../shared/types.js';
+import { generateObject } from '../shared/llm/structured.js';
+import type { EmbeddingProvider, LLMProvider } from '../shared/llm/types.js';
+import type { ActionLogger } from '../shared/logging/action-logger.js';
+import type { Logger } from '../shared/logging/system-logger.js';
 
 const CATEGORIES = ['preference', 'identity', 'relationship', 'rule', 'other'] as const;
 

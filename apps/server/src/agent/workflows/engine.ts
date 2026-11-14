@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import type { NewWorkflow, Repositories } from '../db/repositories.js';
+import type { Repositories } from '../../core/db/repositories.js';
+import type { NewWorkflow } from '../repositories.js';
 import type { MessageFilter } from '../../mailbox/repositories.js';
 import {
   type DocumentAction,
