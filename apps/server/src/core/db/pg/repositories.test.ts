@@ -351,7 +351,7 @@ describe.skipIf(!testDatabaseUrl)('Postgres repositories', () => {
       ]);
     });
 
-    it('returns a thread oldest first and deletes empty threads with their last message', async () => {
+    it('returns a thread oldest first; it disappears with its last message', async () => {
       await repos.messages.upsertMany(accountId, [
         message('m1', { threadId: 'T', internalDate: at(1) }),
         message('m2', { threadId: 'T', internalDate: at(2), snippet: 'latest' }),
@@ -360,14 +360,23 @@ describe.skipIf(!testDatabaseUrl)('Postgres repositories', () => {
         'm1',
         'm2',
       ]);
-      const thread = () =>
-        t.db.selectFrom('threads').selectAll().where('id', '=', 'T').executeTakeFirst();
-      expect(await thread()).toMatchObject({ snippet: 'latest', last_message_at: at(2) });
+      const threads = async () =>
+        (await repos.messages.listThreads(accountId, { limit: 10 })).items;
+      expect(await threads()).toMatchObject([
+        { threadId: 'T', snippet: 'latest', lastMessageAt: at(2), messageCount: 2 },
+      ]);
 
       await repos.messages.deleteMany(accountId, ['m1']);
-      expect(await thread()).toBeDefined();
+      expect(await threads()).toMatchObject([{ threadId: 'T', messageCount: 1 }]);
       await repos.messages.deleteMany(accountId, ['m2']);
-      expect(await thread()).toBeUndefined();
+      expect(await threads()).toEqual([]);
+    });
+
+    it('deletes messages with the account', async () => {
+      await repos.messages.upsertMany(accountId, [message('m1')]);
+      await repos.accounts.delete(accountId);
+      const rows = await t.db.selectFrom('messages').select('id').execute();
+      expect(rows).toEqual([]);
     });
 
     it('sweeps messages not refreshed by a resync, within the window only', async () => {

@@ -7,28 +7,44 @@ import {
 } from '../../../test/helpers/db.js';
 import { migrateDown, migrateReset, migrateToLatest } from './migrator.js';
 
-const APP_TABLES = [
-  'accounts',
-  'action_logs',
-  'attachments',
-  'chat_files',
-  'chat_messages',
-  'chat_sessions',
-  'email_embeddings',
-  'labels',
-  'memory_items',
-  'message_labels',
-  'messages',
-  'oauth_tokens',
-  'outbox_ops',
-  'sessions',
-  'sync_state',
-  'threads',
-  'todos',
-  'tool_runs',
-  'workflow_decisions',
-  'workflows',
+/** Every migration in order, with the app tables it creates and drops. */
+const HISTORY: { name: string; adds?: string[]; drops?: string[] }[] = [
+  {
+    name: '0001_init',
+    adds: [
+      'accounts',
+      'oauth_tokens',
+      'labels',
+      'threads',
+      'messages',
+      'message_labels',
+      'attachments',
+      'todos',
+      'outbox_ops',
+      'action_logs',
+    ],
+  },
+  { name: '0002_sync', adds: ['sync_state'] },
+  { name: '0003_rag', adds: ['email_embeddings'] },
+  {
+    name: '0004_chat',
+    adds: ['chat_sessions', 'chat_messages', 'tool_runs', 'memory_items', 'chat_files'],
+  },
+  { name: '0005_workflows', adds: ['workflows', 'workflow_decisions'] },
+  { name: '0006_document_workflows' },
+  { name: '0007_sessions', adds: ['sessions'] },
+  { name: '0008_drop_threads', drops: ['threads'] },
 ];
+
+/** The app tables after the first `count` migrations, sorted. */
+function tablesAfter(count: number): string[] {
+  const tables = new Set<string>();
+  for (const { adds = [], drops = [] } of HISTORY.slice(0, count)) {
+    for (const name of adds) tables.add(name);
+    for (const name of drops) tables.delete(name);
+  }
+  return [...tables].sort();
+}
 
 describe.skipIf(!testDatabaseUrl)('migrator', () => {
   let t: TestDatabase;
@@ -45,60 +61,45 @@ describe.skipIf(!testDatabaseUrl)('migrator', () => {
     return rows.map((r) => r.tablename);
   };
 
-  it('migrates up, down and up again', async () => {
+  it('migrates up, down one at a time and up again', async () => {
     const up = await migrateToLatest(t.db);
-    expect(up.map((r) => [r.migrationName, r.status])).toEqual([
-      ['0001_init', 'Success'],
-      ['0002_sync', 'Success'],
-      ['0003_rag', 'Success'],
-      ['0004_chat', 'Success'],
-      ['0005_workflows', 'Success'],
-      ['0006_document_workflows', 'Success'],
-      ['0007_sessions', 'Success'],
-    ]);
-    expect(await tables()).toEqual(APP_TABLES);
-
+    expect(up.map((r) => [r.migrationName, r.status])).toEqual(
+      HISTORY.map(({ name }) => [name, 'Success']),
+    );
+    expect(await tables()).toEqual(tablesAfter(HISTORY.length));
     expect(await migrateToLatest(t.db)).toEqual([]);
 
-    expect((await migrateDown(t.db)).map((r) => r.migrationName)).toEqual(['0007_sessions']);
-    const BEFORE_SESSIONS = APP_TABLES.filter((name) => name !== 'sessions');
-    expect(await tables()).toEqual(BEFORE_SESSIONS);
-    expect((await migrateDown(t.db)).map((r) => r.migrationName)).toEqual([
-      '0006_document_workflows',
-    ]);
-    expect(await tables()).toEqual(BEFORE_SESSIONS);
-    const workflowTables = ['workflow_decisions', 'workflows'];
-    expect((await migrateDown(t.db)).map((r) => r.migrationName)).toEqual(['0005_workflows']);
-    expect(await tables()).toEqual(
-      BEFORE_SESSIONS.filter((name) => !workflowTables.includes(name)),
-    );
-    const chatTables = [
-      ...workflowTables,
-      'chat_files',
-      'chat_messages',
-      'chat_sessions',
-      'memory_items',
-      'tool_runs',
-    ];
-    expect((await migrateDown(t.db)).map((r) => r.migrationName)).toEqual(['0004_chat']);
-    expect(await tables()).toEqual(BEFORE_SESSIONS.filter((name) => !chatTables.includes(name)));
-    expect((await migrateDown(t.db)).map((r) => r.migrationName)).toEqual(['0003_rag']);
-    expect(await tables()).toEqual(
-      BEFORE_SESSIONS.filter((name) => name !== 'email_embeddings' && !chatTables.includes(name)),
-    );
-    const down = await migrateDown(t.db);
-    expect(down.map((r) => [r.migrationName, r.direction])).toEqual([['0002_sync', 'Down']]);
-    expect(await tables()).toEqual(
-      BEFORE_SESSIONS.filter(
-        (name) => !['sync_state', 'email_embeddings', ...chatTables].includes(name),
-      ),
-    );
-    await migrateDown(t.db);
+    for (let count = HISTORY.length; count > 0; count--) {
+      const down = await migrateDown(t.db);
+      expect(down.map((r) => [r.migrationName, r.direction])).toEqual([
+        [HISTORY[count - 1]?.name, 'Down'],
+      ]);
+      expect(await tables()).toEqual(tablesAfter(count - 1));
+    }
     expect(await tables()).toEqual([]);
 
     await migrateToLatest(t.db);
-    expect(await tables()).toEqual(APP_TABLES);
+    expect(await tables()).toEqual(tablesAfter(HISTORY.length));
     await migrateReset(t.db);
     expect(await tables()).toEqual([]);
+  });
+
+  it('rebuilds threads from messages when 0008 is reverted', async () => {
+    await migrateToLatest(t.db);
+    await sql`insert into accounts (id, email, google_sub)
+      values ('00000000-0000-0000-0000-000000000001', 'me@example.com', 'sub')`.execute(t.db);
+    await sql`insert into messages (account_id, id, thread_id, snippet, internal_date) values
+      ('00000000-0000-0000-0000-000000000001', 'm1', 'T', 'old', '2026-01-01T00:00:00Z'),
+      ('00000000-0000-0000-0000-000000000001', 'm2', 'T', 'new', '2026-01-02T00:00:00Z')`.execute(
+      t.db,
+    );
+
+    expect((await migrateDown(t.db)).map((r) => r.migrationName)).toEqual(['0008_drop_threads']);
+    const { rows } = await sql<{ id: string; snippet: string }>`
+      select id, snippet from threads`.execute(t.db);
+    expect(rows).toEqual([{ id: 'T', snippet: 'new' }]);
+
+    await migrateToLatest(t.db);
+    await migrateReset(t.db);
   });
 });

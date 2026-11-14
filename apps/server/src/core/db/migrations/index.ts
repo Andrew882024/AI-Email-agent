@@ -6,6 +6,7 @@ import { downMigration as down0004, upMigration as up0004 } from './0004_chat.js
 import { downMigration as down0005, upMigration as up0005 } from './0005_workflows.js';
 import { downMigration as down0006, upMigration as up0006 } from './0006_document_workflows.js';
 import { downMigration as down0007, upMigration as up0007 } from './0007_sessions.js';
+import { downMigration as down0008, upMigration as up0008 } from './0008_drop_threads.js';
 
 // Registered explicitly (not read from disk) so migrations work the same from src, dist and a
 // bundled build. Names sort lexically; never rename or reorder an applied migration.
@@ -17,4 +18,5 @@ export const migrations: Record<string, Migration> = {
   '0005_workflows': { up: up0005, down: down0005 },
   '0006_document_workflows': { up: up0006, down: down0006 },
   '0007_sessions': { up: up0007, down: down0007 },
+  '0008_drop_threads': { up: up0008, down: down0008 },
 };

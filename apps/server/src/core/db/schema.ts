@@ -43,13 +43,6 @@ export interface LabelsTable {
   color_text: string | null;
 }
 
-export interface ThreadsTable {
-  account_id: string;
-  id: string;
-  snippet: string | null;
-  last_message_at: Date | null;
-}
-
 export interface MessagesTable {
   account_id: string;
   id: string;
@@ -246,7 +239,6 @@ export interface Database {
   oauth_tokens: OAuthTokensTable;
   sessions: SessionsTable;
   labels: LabelsTable;
-  threads: ThreadsTable;
   messages: MessagesTable;
   message_labels: MessageLabelsTable;
   attachments: AttachmentsTable;

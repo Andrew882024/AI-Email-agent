@@ -219,31 +219,6 @@ export class PgMessageRepository implements MessageRepository {
       for (const batch of chunk(unique, BATCH_SIZE)) {
         const ids = batch.map((m) => m.id);
 
-        // One row per thread (ON CONFLICT can't touch the same row twice), using its newest message.
-        const newestPerThread = new Map<string, MessageUpsert>();
-        for (const m of batch) {
-          const current = newestPerThread.get(m.threadId);
-          if (!current || m.internalDate > current.internalDate) newestPerThread.set(m.threadId, m);
-        }
-        await trx
-          .insertInto('threads')
-          .values(
-            [...newestPerThread.values()].map((m) => ({
-              account_id: accountId,
-              id: m.threadId,
-              snippet: m.snippet,
-              last_message_at: m.internalDate,
-            })),
-          )
-          .onConflict((oc) =>
-            oc.columns(['account_id', 'id']).doUpdateSet({
-              snippet: sql`case when excluded.last_message_at >= coalesce(threads.last_message_at, '-infinity')
-                then excluded.snippet else threads.snippet end`,
-              last_message_at: sql`greatest(threads.last_message_at, excluded.last_message_at)`,
-            }),
-          )
-          .execute();
-
         await trx
           .insertInto('messages')
           .values(
@@ -489,28 +464,10 @@ export class PgMessageRepository implements MessageRepository {
     if (ids.length === 0) return;
     await this.db.transaction().execute(async (trx) => {
       for (const batch of chunk([...new Set(ids)], BATCH_SIZE)) {
-        const deleted = await trx
+        await trx
           .deleteFrom('messages')
           .where('account_id', '=', accountId)
           .where('id', 'in', batch)
-          .returning('thread_id')
-          .execute();
-        const threadIds = [...new Set(deleted.map((r) => r.thread_id))];
-        if (threadIds.length === 0) continue;
-        await trx
-          .deleteFrom('threads as t')
-          .where('t.account_id', '=', accountId)
-          .where('t.id', 'in', threadIds)
-          .where(({ not, exists, selectFrom }) =>
-            not(
-              exists(
-                selectFrom('messages as m')
-                  .select('m.id')
-                  .whereRef('m.account_id', '=', 't.account_id')
-                  .whereRef('m.thread_id', '=', 't.id'),
-              ),
-            ),
-          )
           .execute();
       }
     });

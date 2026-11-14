@@ -141,7 +141,7 @@ export interface MessageRepository {
     messageIds: string[],
     change: { add?: string[]; remove?: string[] },
   ): Promise<void>;
-  /** Delete messages; threads left empty are deleted too. */
+  /** Delete messages (their labels, attachments and embeddings go with them). */
   deleteMany(accountId: string, ids: string[]): Promise<void>;
   /**
    * After a full resync: delete messages not refreshed since `updatedBefore` (gone from Gmail),
