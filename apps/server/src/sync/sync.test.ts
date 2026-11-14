@@ -1,4 +1,4 @@
-import { createMailboxMirror } from '../mailbox/mirror.js';
+import { createMailboxMirror } from '../mailbox/index.js';
 import { sql } from 'kysely';
 import { pino } from 'pino';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -10,9 +10,9 @@ import type { Repositories } from '../repositories.js';
 import { type AppEventName, type AppEvents, EventBus } from '../shared/events/event-bus.js';
 import { ActionLogger } from '../shared/logging/action-logger.js';
 import { FakeEmbeddings } from '../shared/testing/fake-llm.js';
-import { EmailIndexer } from '../mailbox/search/indexer.js';
+import { EmailIndexer } from '../mailbox/index.js';
 import { MailSync } from './mail-sync.js';
-import { MailboxService } from '../mailbox/mailbox.js';
+import { MailboxService } from '../mailbox/index.js';
 import { OutboxWorker } from './outbox-worker.js';
 import { SyncScheduler } from './scheduler.js';
 import { TasksSync } from './tasks-sync.js';

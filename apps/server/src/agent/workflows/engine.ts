@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { NewWorkflow, AgentRepos } from '../repositories.js';
-import type { MessageFilter } from '../../mailbox/repositories.js';
+import type { MessageFilter } from '../../mailbox/index.js';
 import {
   type DocumentAction,
   type DocumentFormat,
@@ -15,8 +15,8 @@ import { generateObject } from '../../shared/llm/structured.js';
 import type { EmbeddingProvider, LLMProvider } from '../../shared/llm/types.js';
 import type { ActionLogger } from '../../shared/logging/action-logger.js';
 import type { Logger } from '../../shared/logging/system-logger.js';
-import { emailChunk } from '../../mailbox/search/chunk.js';
-import { gmailLink } from '../../mailbox/mailbox.js';
+import { emailChunk } from '../../mailbox/index.js';
+import { gmailLink } from '../../mailbox/index.js';
 import { NotFoundError } from '../../shared/errors.js';
 import { type ToolContext, ToolError, type ToolRegistry } from '../../shared/tool-registry.js';
 import { documentColumns, type DocumentEntry, type DocumentSink } from './documents.js';

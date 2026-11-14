@@ -1,4 +1,4 @@
-import type { MailboxMirror } from '../mailbox/mirror.js';
+import type { MailboxMirror } from '../mailbox/index.js';
 import type { FullSyncCheckpoint } from '../shared/types.js';
 import type { EventBus } from '../shared/events/event-bus.js';
 import { HistoryExpiredError } from '../shared/google/errors.js';

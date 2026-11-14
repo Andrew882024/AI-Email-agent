@@ -11,7 +11,7 @@ import type {
 import type { LLMMessage, LLMProvider, Part, ToolDeclaration } from '../shared/llm/types.js';
 import type { Logger } from '../shared/logging/system-logger.js';
 import { NotFoundError } from '../shared/errors.js';
-import { forwardSubject, replyRecipients, replySubject } from '../mailbox/tools/compose.js';
+import { forwardSubject, replyRecipients, replySubject } from '../mailbox/index.js';
 import { type ToolInfo, type ToolRegistry, ToolError } from '../shared/tool-registry.js';
 import type { ChatFileStore } from './files.js';
 import type { MemoryService } from './memory.js';

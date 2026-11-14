@@ -1,5 +1,10 @@
 // Storage contract of the sync module's table (sync_state).
 import type { FullSyncCheckpoint, SyncState } from '../shared/types.js';
+import type { Kysely } from 'kysely';
+import type { Database } from '../shared/db/schema.js';
+
+/** The tables this module owns; its repositories can't query any other table. */
+export type SyncDb = Kysely<Pick<Database, 'sync_state'>>;
 
 export interface SyncStateRepository {
   get(accountId: string): Promise<SyncState>;

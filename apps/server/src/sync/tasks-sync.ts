@@ -1,4 +1,4 @@
-import type { MailboxMirror } from '../mailbox/mirror.js';
+import type { MailboxMirror } from '../mailbox/index.js';
 import type { SyncStateRepository } from './repositories.js';
 import type { EventBus } from '../shared/events/event-bus.js';
 import type { GatewayProvider } from '../shared/google/gateways.js';

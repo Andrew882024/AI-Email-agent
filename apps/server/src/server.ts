@@ -16,11 +16,11 @@ import Fastify, {
   type FastifyRequest,
 } from 'fastify';
 import { z } from 'zod';
-import { registerAuthRoutes, requestAccount } from './auth/routes.js';
-import { Sessions } from './auth/sessions.js';
-import { registerMailboxRoutes } from './mailbox/routes.js';
-import { registerSyncRoutes } from './sync/routes.js';
-import { registerAgentRoutes } from './agent/routes.js';
+import { registerAuthRoutes, requestAccount } from './auth/index.js';
+import { Sessions } from './auth/index.js';
+import { registerMailboxRoutes } from './mailbox/index.js';
+import { registerSyncRoutes } from './sync/index.js';
+import { registerAgentRoutes } from './agent/index.js';
 import { HttpError } from './shared/http.js';
 
 export interface ServerDeps {

@@ -1,10 +1,9 @@
 import { sql } from 'kysely';
-import type { Db } from '../shared/db/connection.js';
-import type { OAuthTokenRepository, StoredOAuthToken } from './repositories.js';
+import type { OAuthTokenRepository, StoredOAuthToken, AuthDb } from './repositories.js';
 
 /** The account's Google refresh token, kept in columns of `accounts`. */
 export class PgOAuthTokenRepository implements OAuthTokenRepository {
-  constructor(private readonly db: Db) {}
+  constructor(private readonly db: AuthDb) {}
 
   async get(accountId: string): Promise<StoredOAuthToken | undefined> {
     const row = await this.db

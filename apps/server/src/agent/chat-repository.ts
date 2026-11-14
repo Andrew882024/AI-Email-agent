@@ -10,8 +10,12 @@ import type {
   ToolRun,
   ToolRunStatus,
 } from '../shared/types.js';
-import type { Db } from '../shared/db/connection.js';
-import type { ChatFileRepository, ChatRepository, MemoryRepository } from './repositories.js';
+import type {
+  ChatFileRepository,
+  ChatRepository,
+  MemoryRepository,
+  AgentDb,
+} from './repositories.js';
 import type {
   ChatFilesTable,
   ChatMessagesTable,
@@ -70,7 +74,7 @@ function toRun(sessionId: string, messageId: string, run: StoredToolRun): ToolRu
 const holdsRun = (id: string) => sql<boolean>`m.tool_runs @> ${JSON.stringify([{ id }])}::jsonb`;
 
 export class PgChatRepository implements ChatRepository {
-  constructor(private readonly db: Db) {}
+  constructor(private readonly db: AgentDb) {}
 
   async createSession(accountId: string, title?: string) {
     const row = await this.db
@@ -269,7 +273,7 @@ const MEMORY_COLUMNS = [
 ] as const;
 
 export class PgMemoryRepository implements MemoryRepository {
-  constructor(private readonly db: Db) {}
+  constructor(private readonly db: AgentDb) {}
 
   async list(accountId: string) {
     const rows = await this.db
@@ -359,7 +363,7 @@ function toFile(row: Selectable<ChatFilesTable>): ChatFile {
 }
 
 export class PgChatFileRepository implements ChatFileRepository {
-  constructor(private readonly db: Db) {}
+  constructor(private readonly db: AgentDb) {}
 
   async create(file: Omit<ChatFile, 'id' | 'createdAt'>) {
     const row = await this.db

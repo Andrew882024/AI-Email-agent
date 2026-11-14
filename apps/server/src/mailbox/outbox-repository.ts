@@ -1,7 +1,6 @@
 import { type Selectable, sql } from 'kysely';
 import type { OutboxOp } from '../shared/types.js';
-import type { Db } from '../shared/db/connection.js';
-import type { OutboxRepository } from './repositories.js';
+import type { OutboxRepository, MailboxDb } from './repositories.js';
 import type { OutboxOpsTable } from '../shared/db/schema.js';
 
 function toOp(row: Selectable<OutboxOpsTable>): OutboxOp {
@@ -20,7 +19,7 @@ function toOp(row: Selectable<OutboxOpsTable>): OutboxOp {
 }
 
 export class PgOutboxRepository implements OutboxRepository {
-  constructor(private readonly db: Db) {}
+  constructor(private readonly db: MailboxDb) {}
 
   async enqueue(accountId: string, op: string, payload: unknown) {
     const row = await this.db

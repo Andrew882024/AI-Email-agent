@@ -1,6 +1,6 @@
 import { sql } from 'kysely';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { PgAccountRepository } from '../auth/account-repository.js';
+import { PgAccountRepository } from '../auth/index.js';
 import { createTestDatabase, type TestDatabase, testDatabaseUrl } from '../shared/testing/db.js';
 import { PgChatRepository } from './chat-repository.js';
 

@@ -1,8 +1,11 @@
-import type { Selectable } from 'kysely';
+import type { Kysely, Selectable } from 'kysely';
 import type { ActionLogEntry, ActionStatus, Actor, Page } from '../types.js';
-import type { Db } from '../db/connection.js';
 import type { ActionLogsTable } from '../db/schema.js';
 import { clamp, decodeCursor, encodeCursor } from '../db/util.js';
+import type { Database } from '../db/schema.js';
+
+/** The tables this module owns; its repositories can't query any other table. */
+export type ActionLogDb = Kysely<Pick<Database, 'action_logs'>>;
 
 export interface NewActionLog {
   accountId?: string;
@@ -51,7 +54,7 @@ function toEntry(row: Selectable<ActionLogsTable>): ActionLogEntry {
 }
 
 export class PgActionLogRepository implements ActionLogRepository {
-  constructor(private readonly db: Db) {}
+  constructor(private readonly db: ActionLogDb) {}
 
   async insert(entry: NewActionLog) {
     const row = await this.db

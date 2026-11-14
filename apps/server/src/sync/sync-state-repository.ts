@@ -1,11 +1,10 @@
 import { sql } from 'kysely';
-import type { Db } from '../shared/db/connection.js';
 import type { FullSyncCheckpoint, SyncState } from '../shared/types.js';
-import type { SyncStateRepository } from './repositories.js';
+import type { SyncStateRepository, SyncDb } from './repositories.js';
 
 /** Per-account sync progress: incremental sync point, full-sync checkpoint, Tasks cursor. */
 export class PgSyncStateRepository implements SyncStateRepository {
-  constructor(private readonly db: Db) {}
+  constructor(private readonly db: SyncDb) {}
 
   async get(accountId: string): Promise<SyncState> {
     const row = await this.db

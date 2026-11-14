@@ -16,8 +16,23 @@ import type {
   WorkflowStatus,
   WorkflowType,
 } from '../shared/types.js';
-import type { AccountRepository } from '../auth/repositories.js';
-import type { LabelRepository, MessageRepository, VectorStore } from '../mailbox/repositories.js';
+import type { AccountRepository } from '../auth/index.js';
+import type { LabelRepository, MessageRepository, VectorStore } from '../mailbox/index.js';
+import type { Kysely } from 'kysely';
+import type { Database } from '../shared/db/schema.js';
+
+/** The tables this module owns; its repositories can't query any other table. */
+export type AgentDb = Kysely<
+  Pick<
+    Database,
+    | 'chat_sessions'
+    | 'chat_messages'
+    | 'memory_items'
+    | 'chat_files'
+    | 'workflows'
+    | 'workflow_decisions'
+  >
+>;
 
 export interface ChatRepository {
   createSession(accountId: string, title?: string): Promise<ChatSession>;

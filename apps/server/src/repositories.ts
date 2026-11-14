@@ -1,46 +1,38 @@
 // Composition: every module's repositories, wired to Postgres. Only the app's entry points (server,
 // services, CLI) and tests use this; module code declares the narrower contracts it needs
 // (MailboxRepos, AgentRepos, ...).
-import { PgAccountRepository } from './auth/account-repository.js';
-import { PgOAuthTokenRepository } from './auth/oauth-token-repository.js';
-import type {
-  AccountRepository,
-  OAuthTokenRepository,
-  SessionRepository,
-} from './auth/repositories.js';
-import { PgSessionRepository } from './auth/session-repository.js';
-import {
-  PgChatFileRepository,
-  PgChatRepository,
-  PgMemoryRepository,
-} from './agent/chat-repository.js';
+import { PgAccountRepository } from './auth/index.js';
+import { PgOAuthTokenRepository } from './auth/index.js';
+import type { AccountRepository, OAuthTokenRepository, SessionRepository } from './auth/index.js';
+import { PgSessionRepository } from './auth/index.js';
+import { PgChatFileRepository, PgChatRepository, PgMemoryRepository } from './agent/index.js';
 import type {
   ChatFileRepository,
   ChatRepository,
   MemoryRepository,
   WorkflowRepository,
-} from './agent/repositories.js';
-import { PgWorkflowRepository } from './agent/workflows/workflow-repository.js';
-import { PgLabelRepository } from './mailbox/label-repository.js';
-import { PgMessageRepository } from './mailbox/message-repository.js';
-import { PgOutboxRepository } from './mailbox/outbox-repository.js';
+} from './agent/index.js';
+import { PgWorkflowRepository } from './agent/index.js';
+import { PgLabelRepository } from './mailbox/index.js';
+import { PgMessageRepository } from './mailbox/index.js';
+import { PgOutboxRepository } from './mailbox/index.js';
 import type {
   LabelRepository,
   MessageRepository,
   OutboxRepository,
   TodoRepository,
   VectorStore,
-} from './mailbox/repositories.js';
-import { PgTodoRepository } from './mailbox/todo-repository.js';
-import { PgVectorStore } from './mailbox/vector-store.js';
+} from './mailbox/index.js';
+import { PgTodoRepository } from './mailbox/index.js';
+import { PgVectorStore } from './mailbox/index.js';
 import type { Db } from './shared/db/connection.js';
 import { EMBEDDING_DIMENSIONS } from './shared/db/schema.js';
 import {
   type ActionLogRepository,
   PgActionLogRepository,
 } from './shared/logging/action-log-repository.js';
-import type { SyncStateRepository } from './sync/repositories.js';
-import { PgSyncStateRepository } from './sync/sync-state-repository.js';
+import type { SyncStateRepository } from './sync/index.js';
+import { PgSyncStateRepository } from './sync/index.js';
 
 export interface Repositories {
   accounts: AccountRepository;

@@ -10,7 +10,12 @@ import type {
   Todo,
   TodoStatus,
 } from '../shared/types.js';
-import type { AccountRepository } from '../auth/repositories.js';
+import type { AccountRepository } from '../auth/index.js';
+import type { Kysely } from 'kysely';
+import type { Database } from '../shared/db/schema.js';
+
+/** The tables this module owns; its repositories can't query any other table. */
+export type MailboxDb = Kysely<Pick<Database, 'messages' | 'labels' | 'todos' | 'outbox_ops'>>;
 
 export interface LabelRepository {
   list(accountId: string): Promise<Label[]>;

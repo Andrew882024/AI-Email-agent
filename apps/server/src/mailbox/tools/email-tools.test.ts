@@ -8,10 +8,10 @@ import { createPgRepositories } from '../../repositories.js';
 import type { Repositories } from '../../repositories.js';
 import { EventBus } from '../../shared/events/event-bus.js';
 import { ActionLogger } from '../../shared/logging/action-logger.js';
-import { MailSync } from '../../sync/mail-sync.js';
+import { MailSync } from '../../sync/index.js';
 import { HybridSearch } from '../search/hybrid-search.js';
 import { MailboxService } from '../mailbox.js';
-import { OutboxWorker } from '../../sync/outbox-worker.js';
+import { OutboxWorker } from '../../sync/index.js';
 import { createEmailTools } from './email-tools.js';
 import { type ToolContext, ToolError, ToolRegistry } from '../../shared/tool-registry.js';
 

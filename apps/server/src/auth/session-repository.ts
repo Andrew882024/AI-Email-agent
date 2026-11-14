@@ -1,8 +1,7 @@
-import type { Db } from '../shared/db/connection.js';
-import type { SessionRepository, StoredSession } from './repositories.js';
+import type { SessionRepository, StoredSession, AuthDb } from './repositories.js';
 
 export class PgSessionRepository implements SessionRepository {
-  constructor(private readonly db: Db) {}
+  constructor(private readonly db: AuthDb) {}
 
   async create(session: { id: string; accountId: string; expiresAt: Date }) {
     await this.db

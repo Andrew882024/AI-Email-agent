@@ -1,6 +1,5 @@
 import { sql } from 'kysely';
-import type { Db } from '../shared/db/connection.js';
-import type { MessageFilter, VectorStore } from './repositories.js';
+import type { MessageFilter, VectorStore, MailboxDb } from './repositories.js';
 import { messageFilter } from './message-repository.js';
 import { chunk, clamp } from '../shared/db/util.js';
 
@@ -9,7 +8,7 @@ const toVector = (values: number[]) => `[${values.join(',')}]`;
 
 export class PgVectorStore implements VectorStore {
   constructor(
-    private readonly db: Db,
+    private readonly db: MailboxDb,
     readonly dimensions: number,
   ) {}
 

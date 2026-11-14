@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
-import type { RequestAccount } from '../auth/routes.js';
-import type { OutboxRepository } from '../mailbox/repositories.js';
+import type { RequestAccount } from '../auth/index.js';
+import type { OutboxRepository } from '../mailbox/index.js';
 import type { SyncStateRepository } from './repositories.js';
 import type { SyncScheduler } from './scheduler.js';
 

@@ -1,7 +1,6 @@
 import { type Selectable, sql } from 'kysely';
 import type { Account } from '../shared/types.js';
-import type { Db } from '../shared/db/connection.js';
-import type { AccountRepository } from './repositories.js';
+import type { AccountRepository, AuthDb } from './repositories.js';
 import type { AccountsTable } from '../shared/db/schema.js';
 
 /** Everything but the OAuth token, which has its own repository. */
@@ -28,7 +27,7 @@ function toAccount(row: AccountRow): Account {
 }
 
 export class PgAccountRepository implements AccountRepository {
-  constructor(private readonly db: Db) {}
+  constructor(private readonly db: AuthDb) {}
 
   async upsert(input: { email: string; googleSub: string; displayName?: string }) {
     const displayName = input.displayName ?? null;

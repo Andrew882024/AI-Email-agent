@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import type { RequestAccount } from '../auth/routes.js';
+import type { RequestAccount } from '../auth/index.js';
 import type { ToolRegistry } from '../shared/tool-registry.js';
 import type { VectorStore } from './repositories.js';
 

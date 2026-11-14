@@ -1,9 +1,9 @@
 // Wires the core services for command-line tools (the server will have its own composition root).
-import { createMailboxMirror } from '../mailbox/mirror.js';
+import { createMailboxMirror } from '../mailbox/index.js';
 import { join } from 'node:path';
-import { AUTH_CALLBACK_PATH, GoogleOAuthService } from '../auth/google-auth.js';
-import { AesGcmSecretCipher } from '../auth/secret-cipher.js';
-import { EncryptedTokenStore } from '../auth/token-store.js';
+import { AUTH_CALLBACK_PATH, GoogleOAuthService } from '../auth/index.js';
+import { AesGcmSecretCipher } from '../auth/index.js';
+import { EncryptedTokenStore } from '../auth/index.js';
 import { loadConfig } from '../shared/config/env.js';
 import { createDb } from '../shared/db/connection.js';
 import { createPgRepositories } from '../repositories.js';
@@ -11,11 +11,11 @@ import { EventBus } from '../shared/events/event-bus.js';
 import { GoogleGatewayProvider } from '../shared/google/gateways.js';
 import { ActionLogger } from '../shared/logging/action-logger.js';
 import { createSystemLogger } from '../shared/logging/system-logger.js';
-import { MailSync } from '../sync/mail-sync.js';
-import { MailboxService } from '../mailbox/mailbox.js';
-import { OutboxWorker } from '../sync/outbox-worker.js';
-import { SyncScheduler } from '../sync/scheduler.js';
-import { TasksSync } from '../sync/tasks-sync.js';
+import { MailSync } from '../sync/index.js';
+import { MailboxService } from '../mailbox/index.js';
+import { OutboxWorker } from '../sync/index.js';
+import { SyncScheduler } from '../sync/index.js';
+import { TasksSync } from '../sync/index.js';
 
 export function createCliContext() {
   const config = loadConfig();

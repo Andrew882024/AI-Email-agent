@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import type { RequestAccount } from '../auth/routes.js';
+import type { RequestAccount } from '../auth/index.js';
 import { HttpError } from '../shared/http.js';
 import type { Logger } from '../shared/logging/system-logger.js';
 import type { AgentEvent, ChatAgent } from './agent.js';

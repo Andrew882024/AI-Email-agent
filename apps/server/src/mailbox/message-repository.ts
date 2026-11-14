@@ -13,12 +13,12 @@ import {
   SystemLabel,
   type ThreadSummary,
 } from '../shared/types.js';
-import type { Db } from '../shared/db/connection.js';
 import type {
   LabelCounts,
   MessageFilter,
   MessageListQuery,
   MessageRepository,
+  MailboxDb,
 } from './repositories.js';
 import type { Database, MessagesTable } from '../shared/db/schema.js';
 import { chunk, clamp, decodeCursor, encodeCursor, escapeLike } from '../shared/db/util.js';
@@ -191,7 +191,7 @@ export function messageFilter(
 }
 
 export class PgMessageRepository implements MessageRepository {
-  constructor(private readonly db: Db) {}
+  constructor(private readonly db: MailboxDb) {}
 
   async upsertMany(accountId: string, messages: MessageUpsert[]) {
     if (messages.length === 0) return;

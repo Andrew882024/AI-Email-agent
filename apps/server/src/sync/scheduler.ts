@@ -1,10 +1,10 @@
 import { ReauthRequiredError } from '../shared/google/errors.js';
-import type { GoogleAuthProvider } from '../auth/google-auth.js';
-import type { AccountRepository } from '../auth/repositories.js';
-import type { MailboxMirror } from '../mailbox/mirror.js';
+import type { GoogleAuthProvider } from '../auth/index.js';
+import type { AccountRepository } from '../auth/index.js';
+import type { MailboxMirror } from '../mailbox/index.js';
 import type { EventBus } from '../shared/events/event-bus.js';
 import type { Logger } from '../shared/logging/system-logger.js';
-import type { EmailIndexer } from '../mailbox/search/indexer.js';
+import type { EmailIndexer } from '../mailbox/index.js';
 import type { MailSync } from './mail-sync.js';
 import type { OutboxWorker } from './outbox-worker.js';
 import type { TasksSync } from './tasks-sync.js';

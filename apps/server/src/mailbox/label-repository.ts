@@ -1,7 +1,6 @@
 import { type Selectable, sql } from 'kysely';
 import type { Label } from '../shared/types.js';
-import type { Db } from '../shared/db/connection.js';
-import type { LabelRepository } from './repositories.js';
+import type { LabelRepository, MailboxDb } from './repositories.js';
 import type { LabelsTable } from '../shared/db/schema.js';
 
 function toLabel(row: Selectable<LabelsTable>): Label {
@@ -17,7 +16,7 @@ function toLabel(row: Selectable<LabelsTable>): Label {
 }
 
 /** Remove label ids from every message of the account that has them (label_ids stays sorted). */
-async function detachLabels(db: Db, accountId: string, ids: string[]): Promise<void> {
+async function detachLabels(db: MailboxDb, accountId: string, ids: string[]): Promise<void> {
   if (ids.length === 0) return;
   await db
     .updateTable('messages as m')
@@ -31,7 +30,7 @@ async function detachLabels(db: Db, accountId: string, ids: string[]): Promise<v
     .execute();
 }
 
-async function upsertLabels(db: Db, accountId: string, labels: Label[]): Promise<void> {
+async function upsertLabels(db: MailboxDb, accountId: string, labels: Label[]): Promise<void> {
   if (labels.length === 0) return;
   await db
     .insertInto('labels')
@@ -57,7 +56,7 @@ async function upsertLabels(db: Db, accountId: string, labels: Label[]): Promise
 }
 
 export class PgLabelRepository implements LabelRepository {
-  constructor(private readonly db: Db) {}
+  constructor(private readonly db: MailboxDb) {}
 
   async list(accountId: string) {
     const rows = await this.db

@@ -1,5 +1,10 @@
 // Storage contracts of the auth module's tables (accounts, sessions); db code lives next to them.
 import type { Account } from '../shared/types.js';
+import type { Kysely } from 'kysely';
+import type { Database } from '../shared/db/schema.js';
+
+/** The tables this module owns; its repositories can't query any other table. */
+export type AuthDb = Kysely<Pick<Database, 'accounts' | 'sessions'>>;
 
 export interface AccountRepository {
   /** Insert, or update email/displayName of the account with the same googleSub. */
