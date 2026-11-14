@@ -1,7 +1,7 @@
 import type { MessageFilter, Repositories, SearchHit } from '../db/repositories.js';
-import type { MessageSummary } from '../domain/types.js';
-import type { EmbeddingProvider } from '../llm/types.js';
-import type { Logger } from '../logging/system-logger.js';
+import type { MessageSummary } from '../../shared/types.js';
+import type { EmbeddingProvider } from '../../shared/llm/types.js';
+import type { Logger } from '../../shared/logging/system-logger.js';
 
 export type SearchMode = 'hybrid' | 'keyword' | 'semantic';
 

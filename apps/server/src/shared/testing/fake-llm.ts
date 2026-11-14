@@ -1,4 +1,4 @@
-import { EMBEDDING_DIMENSIONS } from '../../src/core/db/pg/index.js';
+import { EMBEDDING_DIMENSIONS } from '../../core/db/pg/index.js';
 import type {
   EmbeddingProvider,
   EmbeddingTask,
@@ -7,7 +7,7 @@ import type {
   LLMProvider,
   Part,
   StreamChunk,
-} from '../../src/core/llm/types.js';
+} from '../llm/types.js';
 
 /**
  * Deterministic bag-of-words embeddings: texts sharing words are similar. Good enough to test

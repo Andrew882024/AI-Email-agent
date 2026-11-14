@@ -1,9 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import {
-  createTestDatabase,
-  type TestDatabase,
-  testDatabaseUrl,
-} from '../../../test/helpers/db.js';
+import { createTestDatabase, type TestDatabase, testDatabaseUrl } from '../../shared/testing/db.js';
 import { createPgRepositories } from '../db/pg/index.js';
 import type { Repositories } from '../db/repositories.js';
 import { ReauthRequiredError } from './errors.js';

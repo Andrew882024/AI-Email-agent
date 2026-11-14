@@ -1,6 +1,6 @@
 // Kysely table types. Mirrors migrations/; only db/ code imports this.
 import type { ColumnType, Generated } from 'kysely';
-import type { Attachment, EmailAddress, StoredPart } from '../domain/types.js';
+import type { Attachment, EmailAddress, StoredPart } from '../types.js';
 
 /** jsonb: parsed on select, written as a JSON string (node-pg would turn JS arrays into PG arrays). */
 type Json<T> = ColumnType<T, string, string>;

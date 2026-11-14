@@ -4,18 +4,14 @@ import { join } from 'node:path';
 import { sql } from 'kysely';
 import { pino } from 'pino';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import {
-  createTestDatabase,
-  type TestDatabase,
-  testDatabaseUrl,
-} from '../../../test/helpers/db.js';
-import { FakeGateways } from '../../../test/helpers/fake-google.js';
-import { FakeEmbeddings, ScriptedLLM } from '../../../test/helpers/fake-llm.js';
+import { createTestDatabase, type TestDatabase, testDatabaseUrl } from '../../shared/testing/db.js';
+import { FakeGateways } from '../../shared/testing/fake-google.js';
+import { FakeEmbeddings, ScriptedLLM } from '../../shared/testing/fake-llm.js';
 import { createPgRepositories } from '../db/pg/index.js';
 import type { Repositories } from '../db/repositories.js';
-import { EventBus } from '../events/event-bus.js';
-import type { GenerateRequest, Part } from '../llm/types.js';
-import { ActionLogger } from '../logging/action-logger.js';
+import { EventBus } from '../../shared/events/event-bus.js';
+import type { GenerateRequest, Part } from '../../shared/llm/types.js';
+import { ActionLogger } from '../../shared/logging/action-logger.js';
 import { HybridSearch } from '../rag/hybrid-search.js';
 import { MailSync } from '../sync/mail-sync.js';
 import { MailboxService } from '../sync/mailbox.js';

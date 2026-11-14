@@ -1,10 +1,6 @@
 import { sql } from 'kysely';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import {
-  createTestDatabase,
-  type TestDatabase,
-  testDatabaseUrl,
-} from '../../../test/helpers/db.js';
+import { createTestDatabase, type TestDatabase, testDatabaseUrl } from '../testing/db.js';
 import { migrateDown, migrateReset, migrateToLatest } from './migrator.js';
 
 /** Every migration in order, with the app tables it creates and drops. */

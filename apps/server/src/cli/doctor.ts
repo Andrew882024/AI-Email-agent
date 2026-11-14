@@ -1,6 +1,6 @@
 // Startup self-check: validates configuration and database connectivity.
-import { ConfigError, loadConfig } from '../core/config/env.js';
-import { checkDatabase } from '../core/db/health.js';
+import { ConfigError, loadConfig } from '../shared/config/env.js';
+import { checkDatabase } from '../shared/db/health.js';
 
 async function main(): Promise<number> {
   let config;

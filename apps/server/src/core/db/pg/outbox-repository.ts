@@ -1,8 +1,8 @@
 import { type Selectable, sql } from 'kysely';
-import type { OutboxOp } from '../../domain/types.js';
-import type { Db } from '../connection.js';
+import type { OutboxOp } from '../../../shared/types.js';
+import type { Db } from '../../../shared/db/connection.js';
 import type { OutboxRepository } from '../repositories.js';
-import type { OutboxOpsTable } from '../schema.js';
+import type { OutboxOpsTable } from '../../../shared/db/schema.js';
 
 function toOp(row: Selectable<OutboxOpsTable>): OutboxOp {
   return {

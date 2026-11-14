@@ -24,9 +24,9 @@ import type { FastifyInstance } from 'fastify';
 import { sql } from 'kysely';
 import { pino } from 'pino';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createTestDatabase, type TestDatabase, testDatabaseUrl } from '../test/helpers/db.js';
-import { FakeGateways } from '../test/helpers/fake-google.js';
-import { ScriptedLLM } from '../test/helpers/fake-llm.js';
+import { createTestDatabase, type TestDatabase, testDatabaseUrl } from './shared/testing/db.js';
+import { FakeGateways } from './shared/testing/fake-google.js';
+import { ScriptedLLM } from './shared/testing/fake-llm.js';
 import { buildServer } from './server.js';
 
 const logger = pino({ level: 'silent' });

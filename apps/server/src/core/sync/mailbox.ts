@@ -1,6 +1,6 @@
 import type { Repositories } from '../db/repositories.js';
-import type { Todo } from '../domain/types.js';
-import type { EventBus } from '../events/event-bus.js';
+import type { Todo } from '../../shared/types.js';
+import type { EventBus } from '../../shared/events/event-bus.js';
 import type { OutboxOpName, OutboxPayloads } from './outbox-ops.js';
 
 /** Opens the message in Gmail on the web, in the right account. */

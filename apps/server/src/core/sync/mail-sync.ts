@@ -1,11 +1,11 @@
 import type { Repositories } from '../db/repositories.js';
-import type { FullSyncCheckpoint } from '../domain/types.js';
-import type { EventBus } from '../events/event-bus.js';
-import { HistoryExpiredError } from '../google/errors.js';
-import type { GatewayProvider, GmailGateway } from '../google/gateways.js';
-import { mapLimit } from '../google/retry.js';
-import type { ActionLogger } from '../logging/action-logger.js';
-import type { Logger } from '../logging/system-logger.js';
+import type { FullSyncCheckpoint } from '../../shared/types.js';
+import type { EventBus } from '../../shared/events/event-bus.js';
+import { HistoryExpiredError } from '../../shared/google/errors.js';
+import type { GatewayProvider, GmailGateway } from '../../shared/google/gateways.js';
+import { mapLimit } from '../../shared/google/retry.js';
+import type { ActionLogger } from '../../shared/logging/action-logger.js';
+import type { Logger } from '../../shared/logging/system-logger.js';
 import type { OutboxPayloads } from './outbox-ops.js';
 import { parseGmailLabel, parseGmailMessage } from './parse-message.js';
 

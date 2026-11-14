@@ -1,7 +1,7 @@
 // Usage: migrate [up|down|reset]   (default: up)
-import { loadConfig } from '../core/config/env.js';
-import { createDb } from '../core/db/connection.js';
-import { migrateDown, migrateReset, migrateToLatest } from '../core/db/migrator.js';
+import { loadConfig } from '../shared/config/env.js';
+import { createDb } from '../shared/db/connection.js';
+import { migrateDown, migrateReset, migrateToLatest } from '../shared/db/migrator.js';
 
 const commands = { up: migrateToLatest, down: migrateDown, reset: migrateReset };
 const name = (process.argv[2] ?? 'up') as keyof typeof commands;

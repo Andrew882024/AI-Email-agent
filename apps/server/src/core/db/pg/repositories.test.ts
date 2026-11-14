@@ -4,8 +4,8 @@ import {
   createTestDatabase,
   type TestDatabase,
   testDatabaseUrl,
-} from '../../../../test/helpers/db.js';
-import type { MessageUpsert } from '../../domain/types.js';
+} from '../../../shared/testing/db.js';
+import type { MessageUpsert } from '../../../shared/types.js';
 import type { Repositories } from '../repositories.js';
 import { createPgRepositories, EMBEDDING_DIMENSIONS } from './index.js';
 

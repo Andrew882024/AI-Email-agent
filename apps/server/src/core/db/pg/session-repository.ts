@@ -1,4 +1,4 @@
-import type { Db } from '../connection.js';
+import type { Db } from '../../../shared/db/connection.js';
 import type { SessionRepository, StoredSession } from '../repositories.js';
 
 export class PgSessionRepository implements SessionRepository {

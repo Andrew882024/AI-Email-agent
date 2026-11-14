@@ -9,8 +9,8 @@ import type {
   StoredPart,
   ToolRun,
   ToolRunStatus,
-} from '../../domain/types.js';
-import type { Db } from '../connection.js';
+} from '../../../shared/types.js';
+import type { Db } from '../../../shared/db/connection.js';
 import type { ChatFileRepository, ChatRepository, MemoryRepository } from '../repositories.js';
 import type {
   ChatFilesTable,
@@ -18,8 +18,8 @@ import type {
   ChatSessionsTable,
   MemoryItemsTable,
   StoredToolRun,
-} from '../schema.js';
-import { clamp } from './util.js';
+} from '../../../shared/db/schema.js';
+import { clamp } from '../../../shared/db/util.js';
 
 const toVector = (values: number[]) => `[${values.join(',')}]`;
 

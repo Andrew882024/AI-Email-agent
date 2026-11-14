@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Message } from '../domain/types.js';
+import type { Message } from '../../shared/types.js';
 import {
   buildMime,
   forwardBody,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Message } from '../domain/types.js';
+import type { Message } from '../../shared/types.js';
 import { cleanBody, contentHash, emailChunk, htmlToText, MAX_BODY_CHARS } from './chunk.js';
 
 const msg = (over: Partial<Message> = {}): Message => ({

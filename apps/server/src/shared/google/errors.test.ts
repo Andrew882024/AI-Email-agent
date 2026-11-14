@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ReauthRequiredError } from '../auth/errors.js';
+import { ReauthRequiredError } from '../../core/auth/errors.js';
 import {
   httpStatus,
   isNetworkError,

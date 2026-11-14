@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import JSZip from 'jszip';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { ChatFileRepository } from '../db/repositories.js';
-import type { ChatFile } from '../domain/types.js';
+import type { ChatFile } from '../../shared/types.js';
 import { ChatFileStore, classifyFile, UnsupportedFileError, xlsxToText } from './files.js';
 
 /** Minimal real .docx (one paragraph per line). */

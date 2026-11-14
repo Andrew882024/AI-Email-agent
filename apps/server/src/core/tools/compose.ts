@@ -1,5 +1,5 @@
 import MailComposer from 'nodemailer/lib/mail-composer';
-import type { EmailAddress, Message } from '../domain/types.js';
+import type { EmailAddress, Message } from '../../shared/types.js';
 
 export interface OutgoingAttachment {
   filename: string;

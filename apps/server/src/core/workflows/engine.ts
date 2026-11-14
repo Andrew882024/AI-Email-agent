@@ -7,13 +7,13 @@ import {
   SystemLabel,
   type Workflow,
   type WorkflowDecision,
-} from '../domain/types.js';
-import type { EventBus } from '../events/event-bus.js';
-import { mapLimit } from '../google/retry.js';
-import { generateObject } from '../llm/structured.js';
-import type { EmbeddingProvider, LLMProvider } from '../llm/types.js';
-import type { ActionLogger } from '../logging/action-logger.js';
-import type { Logger } from '../logging/system-logger.js';
+} from '../../shared/types.js';
+import type { EventBus } from '../../shared/events/event-bus.js';
+import { mapLimit } from '../../shared/google/retry.js';
+import { generateObject } from '../../shared/llm/structured.js';
+import type { EmbeddingProvider, LLMProvider } from '../../shared/llm/types.js';
+import type { ActionLogger } from '../../shared/logging/action-logger.js';
+import type { Logger } from '../../shared/logging/system-logger.js';
 import { emailChunk } from '../rag/chunk.js';
 import { gmailLink, NotFoundError } from '../sync/mailbox.js';
 import { type ToolContext, ToolError, type ToolRegistry } from '../tools/registry.js';

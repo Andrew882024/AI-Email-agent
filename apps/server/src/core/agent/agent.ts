@@ -7,9 +7,9 @@ import type {
   MemoryItem,
   StoredPart,
   ToolRun,
-} from '../domain/types.js';
-import type { LLMMessage, LLMProvider, Part, ToolDeclaration } from '../llm/types.js';
-import type { Logger } from '../logging/system-logger.js';
+} from '../../shared/types.js';
+import type { LLMMessage, LLMProvider, Part, ToolDeclaration } from '../../shared/llm/types.js';
+import type { Logger } from '../../shared/logging/system-logger.js';
 import { NotFoundError } from '../sync/mailbox.js';
 import { forwardSubject, replyRecipients, replySubject } from '../tools/compose.js';
 import { type ToolInfo, type ToolRegistry, ToolError } from '../tools/registry.js';

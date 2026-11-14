@@ -1,9 +1,9 @@
 import type { Selectable } from 'kysely';
-import type { ActionLogEntry, Actor } from '../../domain/types.js';
-import type { Db } from '../connection.js';
+import type { ActionLogEntry, Actor } from '../../../shared/types.js';
+import type { Db } from '../../../shared/db/connection.js';
 import type { ActionLogQuery, ActionLogRepository, NewActionLog } from '../repositories.js';
-import type { ActionLogsTable } from '../schema.js';
-import { clamp, decodeCursor, encodeCursor } from './util.js';
+import type { ActionLogsTable } from '../../../shared/db/schema.js';
+import { clamp, decodeCursor, encodeCursor } from '../../../shared/db/util.js';
 
 function toEntry(row: Selectable<ActionLogsTable>): ActionLogEntry {
   return {

@@ -1,16 +1,12 @@
 import { sql } from 'kysely';
 import { pino } from 'pino';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import {
-  createTestDatabase,
-  type TestDatabase,
-  testDatabaseUrl,
-} from '../../../test/helpers/db.js';
-import { FakeEmbeddings } from '../../../test/helpers/fake-llm.js';
+import { createTestDatabase, type TestDatabase, testDatabaseUrl } from '../../shared/testing/db.js';
+import { FakeEmbeddings } from '../../shared/testing/fake-llm.js';
 import { createPgRepositories } from '../db/pg/index.js';
 import type { Repositories } from '../db/repositories.js';
-import type { MessageUpsert } from '../domain/types.js';
-import { type AppEvents, EventBus } from '../events/event-bus.js';
+import type { MessageUpsert } from '../../shared/types.js';
+import { type AppEvents, EventBus } from '../../shared/events/event-bus.js';
 import { HybridSearch } from './hybrid-search.js';
 import { EmailIndexer } from './indexer.js';
 

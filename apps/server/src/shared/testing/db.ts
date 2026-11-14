@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import pg from 'pg';
-import { createDb, type Db } from '../../src/core/db/connection.js';
-import { migrateToLatest } from '../../src/core/db/migrator.js';
+import { createDb, type Db } from '../db/connection.js';
+import { migrateToLatest } from '../db/migrator.js';
 
 /** Set by `pnpm test:integration`; DB tests are skipped without it. */
 export const testDatabaseUrl = process.env.TEST_DATABASE_URL;

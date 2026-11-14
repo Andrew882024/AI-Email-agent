@@ -1,5 +1,5 @@
-import type { DocumentAction, DocumentFormat } from '../domain/types.js';
-import type { DocSection, GatewayProvider } from '../google/gateways.js';
+import type { DocumentAction, DocumentFormat } from '../../shared/types.js';
+import type { DocSection, GatewayProvider } from '../../shared/google/gateways.js';
 
 /** The Drive folder that holds every workflow document. */
 export const DRIVE_FOLDER = 'AI Email Agent';

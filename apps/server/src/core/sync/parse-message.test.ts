@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { GmailMessage } from '../google/gateways.js';
+import type { GmailMessage } from '../../shared/google/gateways.js';
 import {
   decodeEntities,
   parseAddresses,

@@ -31,7 +31,7 @@ import type {
   ThreadSummary,
   Todo,
   TodoStatus,
-} from '../domain/types.js';
+} from '../../shared/types.js';
 
 export interface AccountRepository {
   /** Insert, or update email/displayName of the account with the same googleSub. */

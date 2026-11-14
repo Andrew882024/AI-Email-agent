@@ -1,8 +1,8 @@
 import { type Selectable, sql } from 'kysely';
-import type { Account } from '../../domain/types.js';
-import type { Db } from '../connection.js';
+import type { Account } from '../../../shared/types.js';
+import type { Db } from '../../../shared/db/connection.js';
 import type { AccountRepository } from '../repositories.js';
-import type { AccountsTable } from '../schema.js';
+import type { AccountsTable } from '../../../shared/db/schema.js';
 
 /** Everything but the OAuth token and sync checkpoint, which have their own repositories. */
 const ACCOUNT_COLUMNS = [

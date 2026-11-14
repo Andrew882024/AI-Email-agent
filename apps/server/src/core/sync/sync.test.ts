@@ -1,18 +1,14 @@
 import { sql } from 'kysely';
 import { pino } from 'pino';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { FakeGateways, googleError } from '../../../test/helpers/fake-google.js';
-import {
-  createTestDatabase,
-  type TestDatabase,
-  testDatabaseUrl,
-} from '../../../test/helpers/db.js';
+import { FakeGateways, googleError } from '../../shared/testing/fake-google.js';
+import { createTestDatabase, type TestDatabase, testDatabaseUrl } from '../../shared/testing/db.js';
 import { ReauthRequiredError } from '../auth/errors.js';
 import { createPgRepositories } from '../db/pg/index.js';
 import type { Repositories } from '../db/repositories.js';
-import { type AppEventName, type AppEvents, EventBus } from '../events/event-bus.js';
-import { ActionLogger } from '../logging/action-logger.js';
-import { FakeEmbeddings } from '../../../test/helpers/fake-llm.js';
+import { type AppEventName, type AppEvents, EventBus } from '../../shared/events/event-bus.js';
+import { ActionLogger } from '../../shared/logging/action-logger.js';
+import { FakeEmbeddings } from '../../shared/testing/fake-llm.js';
 import { EmailIndexer } from '../rag/indexer.js';
 import { MailSync } from './mail-sync.js';
 import { MailboxService } from './mailbox.js';

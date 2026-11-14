@@ -2,8 +2,8 @@
 import { AesGcmSecretCipher } from '../core/auth/secret-cipher.js';
 import { AUTH_CALLBACK_PATH, GoogleOAuthService } from '../core/auth/google-auth.js';
 import { EncryptedTokenStore } from '../core/auth/token-store.js';
-import { loadConfig } from '../core/config/env.js';
-import { createDb } from '../core/db/connection.js';
+import { loadConfig } from '../shared/config/env.js';
+import { createDb } from '../shared/db/connection.js';
 import { createPgRepositories } from '../core/db/pg/index.js';
 
 const command = process.argv[2] ?? 'status';

@@ -1,4 +1,4 @@
-import { HistoryExpiredError } from '../../src/core/google/errors.js';
+import { HistoryExpiredError } from '../google/errors.js';
 import type {
   DocSection,
   DocumentsGateway,
@@ -10,7 +10,7 @@ import type {
   GmailMessage,
   RemoteTask,
   TasksGateway,
-} from '../../src/core/google/gateways.js';
+} from '../google/gateways.js';
 
 const b64 = (s: string) => Buffer.from(s).toString('base64url');
 

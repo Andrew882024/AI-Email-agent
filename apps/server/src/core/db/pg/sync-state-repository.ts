@@ -1,6 +1,6 @@
 import { sql } from 'kysely';
-import type { FullSyncCheckpoint, SyncState } from '../../domain/types.js';
-import type { Db } from '../connection.js';
+import type { FullSyncCheckpoint, SyncState } from '../../../shared/types.js';
+import type { Db } from '../../../shared/db/connection.js';
 import type { SyncStateRepository } from '../repositories.js';
 
 /** Full-sync checkpoint and Tasks polling cursor, kept in columns of `accounts`. */

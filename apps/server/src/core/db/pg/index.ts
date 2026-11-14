@@ -1,4 +1,4 @@
-import type { Db } from '../connection.js';
+import type { Db } from '../../../shared/db/connection.js';
 import type { Repositories } from '../repositories.js';
 import { PgAccountRepository } from './account-repository.js';
 import { PgChatFileRepository, PgChatRepository, PgMemoryRepository } from './chat-repository.js';
