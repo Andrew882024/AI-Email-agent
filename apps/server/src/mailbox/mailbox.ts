@@ -1,3 +1,4 @@
+import { NotFoundError } from '../shared/errors.js';
 import type { Repositories } from '../core/db/repositories.js';
 import type { Todo } from '../shared/types.js';
 import type { EventBus } from '../shared/events/event-bus.js';
@@ -6,10 +7,6 @@ import type { OutboxOpName, OutboxPayloads } from './outbox-ops.js';
 /** Opens the message in Gmail on the web, in the right account. */
 export const gmailLink = (accountEmail: string, messageId: string) =>
   `https://mail.google.com/mail/?authuser=${encodeURIComponent(accountEmail)}#all/${messageId}`;
-
-export class NotFoundError extends Error {
-  override name = 'NotFoundError';
-}
 
 /**
  * The single write path for mailbox changes: applies them to the local mirror immediately

@@ -5,10 +5,15 @@ import { gmail, type gmail_v1 } from '@googleapis/gmail';
 import { sheets, type sheets_v4 } from '@googleapis/sheets';
 import { tasks, type tasks_v1 } from '@googleapis/tasks';
 import type { OAuth2Client } from 'google-auth-library';
-import { isInvalidGrantError, ReauthRequiredError } from '../../auth/errors.js';
-import type { GoogleAuthProvider } from '../../auth/google-auth.js';
 import type { TodoStatus } from '../types.js';
-import { HistoryExpiredError, httpStatus, isNotFound, isRateLimitError } from './errors.js';
+import {
+  HistoryExpiredError,
+  httpStatus,
+  isInvalidGrantError,
+  isNotFound,
+  isRateLimitError,
+  ReauthRequiredError,
+} from './errors.js';
 import { QuotaLimiter, type RetryOptions, withRetry } from './retry.js';
 
 export type GmailMessage = gmail_v1.Schema$Message;
@@ -120,13 +125,20 @@ const GMAIL_COST = {
   send: 100,
 } as const;
 
+/** Authorized Google clients per account; the auth module provides them. */
+export interface GoogleClients {
+  getClient(accountId: string): Promise<OAuth2Client>;
+  /** Forget the account's token (it was rejected); the user must sign in again. */
+  invalidate(accountId: string): Promise<void>;
+}
+
 /**
  * Wraps a Google call: waits for quota (when a limiter is given), retries transient failures, and
  * on invalid_grant forgets the token and throws ReauthRequiredError so callers can surface
  * "reconnect" instead of failing repeatedly.
  */
 function caller(
-  auth: GoogleAuthProvider,
+  auth: GoogleClients,
   accountId: string,
   retry?: RetryOptions,
   limiter?: QuotaLimiter,
@@ -594,7 +606,7 @@ export class GoogleGatewayProvider implements GatewayProvider {
   private readonly limiters = new Map<string, QuotaLimiter>();
 
   constructor(
-    private readonly auth: GoogleAuthProvider,
+    private readonly auth: GoogleClients,
     private readonly options: GoogleGatewayOptions = {},
   ) {}
 

@@ -1,5 +1,5 @@
 import type { ActionLogEntry } from '../types.js';
-import type { ActionLogRepository, NewActionLog } from '../../core/db/repositories.js';
+import type { ActionLogRepository, NewActionLog } from './action-log-repository.js';
 import type { Logger } from './system-logger.js';
 
 /** Who/what an action is about; status, error and duration are filled in by `track`. */

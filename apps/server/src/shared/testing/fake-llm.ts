@@ -1,4 +1,4 @@
-import { EMBEDDING_DIMENSIONS } from '../../core/db/pg/index.js';
+import { EMBEDDING_DIMENSIONS } from '../db/schema.js';
 import type {
   EmbeddingProvider,
   EmbeddingTask,

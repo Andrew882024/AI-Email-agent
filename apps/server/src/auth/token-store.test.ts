@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createTestDatabase, type TestDatabase, testDatabaseUrl } from '../shared/testing/db.js';
 import { createPgRepositories } from '../core/db/pg/index.js';
 import type { Repositories } from '../core/db/repositories.js';
-import { ReauthRequiredError } from './errors.js';
+import { ReauthRequiredError } from '../shared/google/errors.js';
 import { AesGcmSecretCipher } from './secret-cipher.js';
 import { EncryptedTokenStore } from './token-store.js';
 

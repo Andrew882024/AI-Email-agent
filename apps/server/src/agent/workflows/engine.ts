@@ -17,7 +17,8 @@ import type { EmbeddingProvider, LLMProvider } from '../../shared/llm/types.js';
 import type { ActionLogger } from '../../shared/logging/action-logger.js';
 import type { Logger } from '../../shared/logging/system-logger.js';
 import { emailChunk } from '../../mailbox/search/chunk.js';
-import { gmailLink, NotFoundError } from '../../mailbox/mailbox.js';
+import { gmailLink } from '../../mailbox/mailbox.js';
+import { NotFoundError } from '../../shared/errors.js';
 import { type ToolContext, ToolError, type ToolRegistry } from '../../shared/tool-registry.js';
 import { documentColumns, type DocumentEntry, type DocumentSink } from './documents.js';
 

@@ -1,4 +1,4 @@
-import { ReauthRequiredError } from '../auth/errors.js';
+import { ReauthRequiredError } from '../shared/google/errors.js';
 import type { GoogleAuthProvider } from '../auth/google-auth.js';
 import type { AccountRepository } from '../auth/repositories.js';
 import type { MailboxMirror } from '../mailbox/mirror.js';

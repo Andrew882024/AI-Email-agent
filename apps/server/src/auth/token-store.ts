@@ -1,5 +1,5 @@
 import type { OAuthTokenRepository } from './repositories.js';
-import { ReauthRequiredError } from './errors.js';
+import { ReauthRequiredError } from '../shared/google/errors.js';
 import type { SecretCipher } from './secret-cipher.js';
 
 export interface StoredRefreshToken {

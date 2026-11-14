@@ -1,9 +1,39 @@
 import type { Selectable } from 'kysely';
-import type { ActionLogEntry, Actor } from '../../../shared/types.js';
-import type { Db } from '../../../shared/db/connection.js';
-import type { ActionLogQuery, ActionLogRepository, NewActionLog } from '../repositories.js';
-import type { ActionLogsTable } from '../../../shared/db/schema.js';
-import { clamp, decodeCursor, encodeCursor } from '../../../shared/db/util.js';
+import type { ActionLogEntry, ActionStatus, Actor, Page } from '../types.js';
+import type { Db } from '../db/connection.js';
+import type { ActionLogsTable } from '../db/schema.js';
+import { clamp, decodeCursor, encodeCursor } from '../db/util.js';
+
+export interface NewActionLog {
+  accountId?: string;
+  actor: Actor;
+  action: string;
+  targetIds?: string[];
+  params?: unknown;
+  status: ActionStatus;
+  error?: string;
+  durationMs?: number;
+}
+
+export interface ActionLogQuery {
+  accountId?: string;
+  actor?: Actor;
+  action?: string;
+  status?: ActionStatus;
+  since?: Date;
+  until?: Date;
+  /** Clamped to 1..500. */
+  limit: number;
+  cursor?: string;
+}
+
+export interface ActionLogRepository {
+  insert(entry: NewActionLog): Promise<ActionLogEntry>;
+  /** Newest first. */
+  query(filter: ActionLogQuery): Promise<Page<ActionLogEntry>>;
+  /** Forget an account's history (when the user deletes their account). */
+  deleteForAccount(accountId: string): Promise<void>;
+}
 
 function toEntry(row: Selectable<ActionLogsTable>): ActionLogEntry {
   return {

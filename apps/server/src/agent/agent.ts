@@ -10,7 +10,7 @@ import type {
 } from '../shared/types.js';
 import type { LLMMessage, LLMProvider, Part, ToolDeclaration } from '../shared/llm/types.js';
 import type { Logger } from '../shared/logging/system-logger.js';
-import { NotFoundError } from '../mailbox/mailbox.js';
+import { NotFoundError } from '../shared/errors.js';
 import { forwardSubject, replyRecipients, replySubject } from '../mailbox/tools/compose.js';
 import { type ToolInfo, type ToolRegistry, ToolError } from '../shared/tool-registry.js';
 import type { ChatFileStore } from './files.js';

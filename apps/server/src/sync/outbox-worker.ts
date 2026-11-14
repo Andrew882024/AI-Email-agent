@@ -1,4 +1,4 @@
-import { ReauthRequiredError } from '../auth/errors.js';
+import { ReauthRequiredError } from '../shared/google/errors.js';
 import type { MailboxMirror } from '../mailbox/mirror.js';
 import type { OutboxOp } from '../shared/types.js';
 import type { EventBus } from '../shared/events/event-bus.js';

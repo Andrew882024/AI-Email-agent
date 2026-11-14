@@ -21,7 +21,6 @@ import {
   createDb,
   createEmailTools,
   createPgRepositories,
-  EMBEDDING_DIMENSIONS,
   EmailIndexer,
   GeminiEmbeddings,
   HybridSearch,
@@ -37,6 +36,7 @@ import {
   TasksSync,
   ToolRegistry,
 } from './core/index.js';
+import { EMBEDDING_DIMENSIONS } from './shared/db/schema.js';
 
 export interface Services {
   config: AppConfig;

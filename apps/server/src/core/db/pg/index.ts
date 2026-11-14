@@ -1,12 +1,13 @@
 import type { Db } from '../../../shared/db/connection.js';
 import type { Repositories } from '../repositories.js';
+import { EMBEDDING_DIMENSIONS } from '../../../shared/db/schema.js';
 import { PgAccountRepository } from '../../../auth/account-repository.js';
 import {
   PgChatFileRepository,
   PgChatRepository,
   PgMemoryRepository,
 } from '../../../agent/chat-repository.js';
-import { PgActionLogRepository } from './action-log-repository.js';
+import { PgActionLogRepository } from '../../../shared/logging/action-log-repository.js';
 import { PgLabelRepository } from '../../../mailbox/label-repository.js';
 import { PgMessageRepository } from '../../../mailbox/message-repository.js';
 import { PgOAuthTokenRepository } from '../../../auth/oauth-token-repository.js';
@@ -16,9 +17,6 @@ import { PgSyncStateRepository } from '../../../sync/sync-state-repository.js';
 import { PgVectorStore } from '../../../mailbox/vector-store.js';
 import { PgWorkflowRepository } from '../../../agent/workflows/workflow-repository.js';
 import { PgTodoRepository } from '../../../mailbox/todo-repository.js';
-
-/** Embedding size; fixed by migration 0003's vector column. */
-export const EMBEDDING_DIMENSIONS = 1536;
 
 export function createPgRepositories(db: Db): Repositories {
   return {

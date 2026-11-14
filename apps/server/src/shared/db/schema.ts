@@ -2,6 +2,9 @@
 import type { ColumnType, Generated } from 'kysely';
 import type { Attachment, EmailAddress, StoredPart } from '../types.js';
 
+/** Size of every embedding vector column (messages.embedding, memory_items.embedding). */
+export const EMBEDDING_DIMENSIONS = 1536;
+
 /** jsonb: parsed on select, written as a JSON string (node-pg would turn JS arrays into PG arrays). */
 type Json<T> = ColumnType<T, string, string>;
 /** bigint identity: node-pg returns int8 as string. */

@@ -1,6 +1,6 @@
 import { pino } from 'pino';
 import { describe, expect, it, vi } from 'vitest';
-import type { ActionLogRepository, NewActionLog } from '../../core/db/repositories.js';
+import type { ActionLogRepository, NewActionLog } from './action-log-repository.js';
 import { ActionLogger } from './action-logger.js';
 
 function setup(

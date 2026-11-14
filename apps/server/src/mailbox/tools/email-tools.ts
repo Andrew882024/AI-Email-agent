@@ -4,7 +4,8 @@ import { type Label, type Message, SystemLabel } from '../../shared/types.js';
 import type { EventBus } from '../../shared/events/event-bus.js';
 import type { GatewayProvider } from '../../shared/google/gateways.js';
 import type { HybridSearch } from '../search/hybrid-search.js';
-import { NotFoundError, type MailboxService } from '../mailbox.js';
+import { type MailboxService } from '../mailbox.js';
+import { NotFoundError } from '../../shared/errors.js';
 import {
   parseAddresses,
   parseGmailLabel,

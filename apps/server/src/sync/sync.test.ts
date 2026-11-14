@@ -4,7 +4,7 @@ import { pino } from 'pino';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { FakeGateways, googleError } from '../shared/testing/fake-google.js';
 import { createTestDatabase, type TestDatabase, testDatabaseUrl } from '../shared/testing/db.js';
-import { ReauthRequiredError } from '../auth/errors.js';
+import { ReauthRequiredError } from '../shared/google/errors.js';
 import { createPgRepositories } from '../core/db/pg/index.js';
 import type { Repositories } from '../core/db/repositories.js';
 import { type AppEventName, type AppEvents, EventBus } from '../shared/events/event-bus.js';
