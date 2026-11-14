@@ -36,6 +36,10 @@ const HISTORY: { name: string; adds?: string[]; drops?: string[] }[] = [
   { name: '0008_drop_threads', drops: ['threads'] },
   { name: '0009_drop_action_logs', drops: ['action_logs'] },
   { name: '0010_merge_account_state', drops: ['oauth_tokens', 'sync_state'] },
+  {
+    name: '0011_merge_message_parts',
+    drops: ['message_labels', 'attachments', 'email_embeddings'],
+  },
 ];
 
 /** The app tables after the first `count` migrations, sorted. */
@@ -157,6 +161,82 @@ describe.skipIf(!testDatabaseUrl)('migrator', () => {
     const syncs = await sql<Record<string, unknown>>`
       select full_sync_history_id, full_sync_count from sync_state`.execute(t.db);
     expect(syncs.rows).toEqual([{ full_sync_history_id: '42', full_sync_count: 7 }]);
+
+    await migrateToLatest(t.db);
+    await migrateReset(t.db);
+  });
+
+  it('moves labels, attachments and embeddings onto messages and back (0011)', async () => {
+    await migrateToLatest(t.db);
+    await revertThrough('0011_merge_message_parts');
+    const account = '00000000-0000-0000-0000-000000000001';
+    const vector = `[${Array.from({ length: 1536 }, (_, i) => (i === 0 ? 1 : 0)).join(',')}]`;
+    await sql`insert into accounts (id, email, google_sub)
+      values (${account}, 'a@example.com', 'a')`.execute(t.db);
+    await sql`insert into messages (account_id, id, thread_id, internal_date) values
+      (${account}, 'm1', 'T', now()), (${account}, 'm2', 'T', now())`.execute(t.db);
+    await sql`insert into message_labels (account_id, message_id, label_id) values
+      (${account}, 'm1', 'UNREAD'), (${account}, 'm1', 'INBOX')`.execute(t.db);
+    await sql`insert into attachments (account_id, message_id, part_id, attachment_id, filename,
+        mime_type, size) values
+      (${account}, 'm1', '2', null, 'b.png', 'image/png', 20),
+      (${account}, 'm1', '1', 'att-1', 'a.pdf', 'application/pdf', 10)`.execute(t.db);
+    await sql`insert into email_embeddings (account_id, message_id, model, content_hash, embedding)
+      values (${account}, 'm1', 'model-a', 'hash-1', ${vector}::vector)`.execute(t.db);
+
+    await migrateToLatest(t.db);
+    const { rows } = await sql<Record<string, unknown>>`
+      select id, label_ids, attachments, embedding_model, embedding_hash,
+        embedding is not null as embedded
+      from messages order by id`.execute(t.db);
+    expect(rows).toEqual([
+      {
+        id: 'm1',
+        label_ids: ['INBOX', 'UNREAD'],
+        attachments: [
+          {
+            partId: '1',
+            attachmentId: 'att-1',
+            filename: 'a.pdf',
+            mimeType: 'application/pdf',
+            size: 10,
+          },
+          { partId: '2', filename: 'b.png', mimeType: 'image/png', size: 20 },
+        ],
+        embedding_model: 'model-a',
+        embedding_hash: 'hash-1',
+        embedded: true,
+      },
+      {
+        id: 'm2',
+        label_ids: [],
+        attachments: [],
+        embedding_model: null,
+        embedding_hash: null,
+        embedded: false,
+      },
+    ]);
+
+    await revertThrough('0011_merge_message_parts');
+    const labels = await sql<Record<string, unknown>>`
+      select message_id, label_id from message_labels order by label_id`.execute(t.db);
+    expect(labels.rows).toEqual([
+      { message_id: 'm1', label_id: 'INBOX' },
+      { message_id: 'm1', label_id: 'UNREAD' },
+    ]);
+    const files = await sql<Record<string, unknown>>`
+      select part_id, attachment_id, filename, size from attachments order by part_id`.execute(
+      t.db,
+    );
+    expect(files.rows).toEqual([
+      { part_id: '1', attachment_id: 'att-1', filename: 'a.pdf', size: 10 },
+      { part_id: '2', attachment_id: null, filename: 'b.png', size: 20 },
+    ]);
+    const embeddings = await sql<Record<string, unknown>>`
+      select message_id, model, content_hash from email_embeddings`.execute(t.db);
+    expect(embeddings.rows).toEqual([
+      { message_id: 'm1', model: 'model-a', content_hash: 'hash-1' },
+    ]);
 
     await migrateToLatest(t.db);
     await migrateReset(t.db);

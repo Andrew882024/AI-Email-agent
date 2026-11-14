@@ -6,7 +6,6 @@ import {
   sql,
 } from 'kysely';
 import {
-  type Attachment,
   type EmailAddress,
   type Message,
   type MessageSummary,
@@ -21,7 +20,7 @@ import type {
   MessageListQuery,
   MessageRepository,
 } from '../repositories.js';
-import type { AttachmentsTable, Database, MessagesTable } from '../schema.js';
+import type { Database, MessagesTable } from '../schema.js';
 import { chunk, clamp, decodeCursor, encodeCursor, escapeLike } from './util.js';
 
 const SUMMARY_COLUMNS = [
@@ -33,6 +32,7 @@ const SUMMARY_COLUMNS = [
   'm.snippet',
   'm.internal_date',
   'm.has_attachments',
+  'm.label_ids',
 ] as const;
 
 const FULL_COLUMNS = [
@@ -47,16 +47,14 @@ const FULL_COLUMNS = [
   'm.body_text',
   'm.body_html',
   'm.size_estimate',
+  'm.attachments',
 ] as const;
 
 const BATCH_SIZE = 200;
 
-/** Sorted label ids of message `m`, as a selectable column. */
-const labelIds = sql<string[]>`array(
-  select ml.label_id from message_labels ml
-  where ml.account_id = m.account_id and ml.message_id = m.id
-  order by ml.label_id
-)`.as('label_ids');
+/** Distinct, sorted text[] (the database's collation orders label_ids). */
+const sortedLabels = (ids: string[]) =>
+  sql<string[]>`array(select distinct unnest(${ids}::text[]) order by 1)`;
 
 type SummaryRow = Pick<
   Selectable<MessagesTable>,
@@ -68,7 +66,8 @@ type SummaryRow = Pick<
   | 'snippet'
   | 'internal_date'
   | 'has_attachments'
-> & { label_ids: string[] };
+  | 'label_ids'
+>;
 type FullRow = SummaryRow &
   Pick<
     Selectable<MessagesTable>,
@@ -82,6 +81,7 @@ type FullRow = SummaryRow &
     | 'body_text'
     | 'body_html'
     | 'size_estimate'
+    | 'attachments'
   >;
 
 function toSummary(row: SummaryRow): MessageSummary {
@@ -101,18 +101,7 @@ function toSummary(row: SummaryRow): MessageSummary {
   };
 }
 
-function toAttachment(row: Selectable<AttachmentsTable>): Attachment {
-  return {
-    partId: row.part_id,
-    attachmentId: row.attachment_id ?? undefined,
-    filename: row.filename,
-    mimeType: row.mime_type,
-    size: row.size,
-    contentId: row.content_id ?? undefined,
-  };
-}
-
-function toMessage(row: FullRow, attachments: Attachment[]): Message {
+function toMessage(row: FullRow): Message {
   return {
     ...toSummary(row),
     historyId: row.history_id ?? undefined,
@@ -125,7 +114,7 @@ function toMessage(row: FullRow, attachments: Attachment[]): Message {
     bodyText: row.body_text ?? undefined,
     bodyHtml: row.body_html ?? undefined,
     sizeEstimate: row.size_estimate ?? undefined,
-    attachments,
+    attachments: row.attachments,
   };
 }
 
@@ -158,16 +147,9 @@ function toThreadSummary(
   };
 }
 
-/** `message m has label <labelIds>` as a correlated EXISTS. */
-function hasLabel(eb: ExpressionBuilder<Database & { m: MessagesTable }, 'm'>, ids: string[]) {
-  return eb.exists(
-    eb
-      .selectFrom('message_labels as ml')
-      .select('ml.label_id')
-      .whereRef('ml.account_id', '=', 'm.account_id')
-      .whereRef('ml.message_id', '=', 'm.id')
-      .where('ml.label_id', 'in', ids),
-  );
+/** `message m has any of <ids>` (GIN-indexed array overlap). */
+function hasLabel(ids: string[]) {
+  return sql<boolean>`m.label_ids && ${ids}::text[]`;
 }
 
 /** Label, keyword, sender and date conditions on message `m`. */
@@ -176,9 +158,9 @@ export function messageFilter(
   query: MessageFilter,
 ): Expression<SqlBool> {
   const conditions: Expression<SqlBool>[] = [];
-  for (const labelId of new Set(query.labelIds)) conditions.push(hasLabel(eb, [labelId]));
+  for (const labelId of new Set(query.labelIds)) conditions.push(hasLabel([labelId]));
   const excluded = query.excludeLabelIds ?? [];
-  if (excluded.length > 0) conditions.push(eb.not(hasLabel(eb, excluded)));
+  if (excluded.length > 0) conditions.push(eb.not(hasLabel(excluded)));
   const search = query.search?.trim();
   if (search) {
     const pattern = `%${escapeLike(search)}%`;
@@ -217,8 +199,6 @@ export class PgMessageRepository implements MessageRepository {
 
     await this.db.transaction().execute(async (trx) => {
       for (const batch of chunk(unique, BATCH_SIZE)) {
-        const ids = batch.map((m) => m.id);
-
         await trx
           .insertInto('messages')
           .values(
@@ -242,6 +222,10 @@ export class PgMessageRepository implements MessageRepository {
               internal_date: m.internalDate,
               size_estimate: m.sizeEstimate ?? null,
               has_attachments: m.hasAttachments,
+              label_ids: sortedLabels(m.labelIds),
+              attachments: JSON.stringify(
+                [...m.attachments].sort((a, b) => (a.partId < b.partId ? -1 : 1)),
+              ),
             })),
           )
           .onConflict((oc) =>
@@ -263,47 +247,12 @@ export class PgMessageRepository implements MessageRepository {
               internal_date: eb.ref('excluded.internal_date'),
               size_estimate: eb.ref('excluded.size_estimate'),
               has_attachments: eb.ref('excluded.has_attachments'),
+              label_ids: eb.ref('excluded.label_ids'),
+              attachments: eb.ref('excluded.attachments'),
               updated_at: sql`now()`,
             })),
           )
           .execute();
-
-        await trx
-          .deleteFrom('message_labels')
-          .where('account_id', '=', accountId)
-          .where('message_id', 'in', ids)
-          .execute();
-        const labelRows = batch.flatMap((m) =>
-          [...new Set(m.labelIds)].map((labelId) => ({
-            account_id: accountId,
-            message_id: m.id,
-            label_id: labelId,
-          })),
-        );
-        for (const rows of chunk(labelRows, 1000)) {
-          await trx.insertInto('message_labels').values(rows).execute();
-        }
-
-        await trx
-          .deleteFrom('attachments')
-          .where('account_id', '=', accountId)
-          .where('message_id', 'in', ids)
-          .execute();
-        const attachmentRows = batch.flatMap((m) =>
-          m.attachments.map((a) => ({
-            account_id: accountId,
-            message_id: m.id,
-            part_id: a.partId,
-            attachment_id: a.attachmentId ?? null,
-            filename: a.filename,
-            mime_type: a.mimeType,
-            size: a.size,
-            content_id: a.contentId ?? null,
-          })),
-        );
-        for (const rows of chunk(attachmentRows, 500)) {
-          await trx.insertInto('attachments').values(rows).execute();
-        }
       }
     });
   }
@@ -317,30 +266,30 @@ export class PgMessageRepository implements MessageRepository {
     if (ids.length === 0) return [];
     const rows = await this.db
       .selectFrom('messages as m')
-      .select([...FULL_COLUMNS, labelIds])
+      .select(FULL_COLUMNS)
       .where('m.account_id', '=', accountId)
       .where('m.id', 'in', ids)
       .execute();
-    return this.withAttachments(accountId, rows);
+    return rows.map(toMessage);
   }
 
   async getThread(accountId: string, threadId: string) {
     const rows = await this.db
       .selectFrom('messages as m')
-      .select([...FULL_COLUMNS, labelIds])
+      .select(FULL_COLUMNS)
       .where('m.account_id', '=', accountId)
       .where('m.thread_id', '=', threadId)
       .orderBy('m.internal_date')
       .orderBy('m.id')
       .execute();
-    return this.withAttachments(accountId, rows);
+    return rows.map(toMessage);
   }
 
   async list(accountId: string, query: MessageListQuery) {
     const limit = clamp(query.limit, 1, 200);
     let q = this.db
       .selectFrom('messages as m')
-      .select([...SUMMARY_COLUMNS, labelIds])
+      .select(SUMMARY_COLUMNS)
       .where('m.account_id', '=', accountId)
       .where((eb) => messageFilter(eb, query));
 
@@ -395,7 +344,7 @@ export class PgMessageRepository implements MessageRepository {
         ? []
         : await this.db
             .selectFrom('messages as m')
-            .select([...SUMMARY_COLUMNS, labelIds])
+            .select(SUMMARY_COLUMNS)
             .where('m.account_id', '=', accountId)
             .where(
               'm.thread_id',
@@ -429,33 +378,23 @@ export class PgMessageRepository implements MessageRepository {
     const remove = [...new Set(change.remove)];
     if (messageIds.length === 0 || (add.length === 0 && remove.length === 0)) return;
 
+    // Remove first, then add (a label in both ends up present). label_ids stays sorted and distinct.
+    // updated_at is left alone: it marks content refreshed from Gmail (resync sweep, re-embedding).
     await this.db.transaction().execute(async (trx) => {
       for (const ids of chunk([...new Set(messageIds)], BATCH_SIZE)) {
-        if (remove.length > 0) {
-          await trx
-            .deleteFrom('message_labels')
-            .where('account_id', '=', accountId)
-            .where('message_id', 'in', ids)
-            .where('label_id', 'in', remove)
-            .execute();
-        }
-        if (add.length === 0) continue;
-        const existing = await trx
-          .selectFrom('messages')
-          .select('id')
-          .where('account_id', '=', accountId)
-          .where('id', 'in', ids)
+        await trx
+          .updateTable('messages as m')
+          .set({
+            label_ids: sql<string[]>`array(
+              select l from unnest(m.label_ids) l where l <> all(${remove}::text[])
+              union
+              select unnest(${add}::text[])
+              order by 1
+            )`,
+          })
+          .where('m.account_id', '=', accountId)
+          .where('m.id', 'in', ids)
           .execute();
-        const rows = existing.flatMap(({ id }) =>
-          add.map((labelId) => ({ account_id: accountId, message_id: id, label_id: labelId })),
-        );
-        if (rows.length > 0) {
-          await trx
-            .insertInto('message_labels')
-            .values(rows)
-            .onConflict((oc) => oc.doNothing())
-            .execute();
-        }
       }
     });
   }
@@ -504,44 +443,14 @@ export class PgMessageRepository implements MessageRepository {
   }
 
   async countByLabel(accountId: string) {
-    const rows = await this.db
-      .selectFrom('message_labels as ml')
-      .select((eb) => [
-        'ml.label_id',
-        eb.fn.countAll<string>().as('total'),
-        sql<string>`count(*) filter (where exists (
-          select 1 from message_labels u
-          where u.account_id = ml.account_id and u.message_id = ml.message_id
-            and u.label_id = ${SystemLabel.UNREAD}
-        ))`.as('unread'),
-      ])
-      .where('ml.account_id', '=', accountId)
-      .groupBy('ml.label_id')
-      .execute();
+    const { rows } = await sql<{ label_id: string; total: string; unread: string }>`
+      select l as label_id, count(*) as total,
+        count(*) filter (where ${SystemLabel.UNREAD} = any(m.label_ids)) as unread
+      from messages m cross join lateral unnest(m.label_ids) l
+      where m.account_id = ${accountId}
+      group by l`.execute(this.db);
     const counts: Record<string, LabelCounts> = {};
     for (const r of rows) counts[r.label_id] = { total: Number(r.total), unread: Number(r.unread) };
     return counts;
-  }
-
-  private async withAttachments(accountId: string, rows: FullRow[]): Promise<Message[]> {
-    if (rows.length === 0) return [];
-    const attachments = await this.db
-      .selectFrom('attachments')
-      .selectAll()
-      .where('account_id', '=', accountId)
-      .where(
-        'message_id',
-        'in',
-        rows.map((r) => r.id),
-      )
-      .orderBy('part_id')
-      .execute();
-    const byMessage = new Map<string, Attachment[]>();
-    for (const a of attachments) {
-      const list = byMessage.get(a.message_id) ?? [];
-      list.push(toAttachment(a));
-      byMessage.set(a.message_id, list);
-    }
-    return rows.map((r) => toMessage(r, byMessage.get(r.id) ?? []));
   }
 }

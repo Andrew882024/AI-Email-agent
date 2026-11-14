@@ -16,6 +16,21 @@ function toLabel(row: Selectable<LabelsTable>): Label {
   };
 }
 
+/** Remove label ids from every message of the account that has them (label_ids stays sorted). */
+async function detachLabels(db: Db, accountId: string, ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+  await db
+    .updateTable('messages as m')
+    .set({
+      label_ids: sql<string[]>`array(
+        select l from unnest(m.label_ids) l where l <> all(${ids}::text[]) order by 1
+      )`,
+    })
+    .where('m.account_id', '=', accountId)
+    .where(sql<boolean>`m.label_ids && ${ids}::text[]`)
+    .execute();
+}
+
 async function upsertLabels(db: Db, accountId: string, labels: Label[]): Promise<void> {
   if (labels.length === 0) return;
   await db
@@ -86,27 +101,17 @@ export class PgLabelRepository implements LabelRepository {
       let stale = trx.deleteFrom('labels').where('account_id', '=', accountId);
       if (keep.length > 0) stale = stale.where('id', 'not in', keep);
       const removed = await stale.returning('id').execute();
-      if (removed.length > 0) {
-        await trx
-          .deleteFrom('message_labels')
-          .where('account_id', '=', accountId)
-          .where(
-            'label_id',
-            'in',
-            removed.map((r) => r.id),
-          )
-          .execute();
-      }
+      await detachLabels(
+        trx,
+        accountId,
+        removed.map((r) => r.id),
+      );
     });
   }
 
   async delete(accountId: string, id: string) {
     await this.db.transaction().execute(async (trx) => {
-      await trx
-        .deleteFrom('message_labels')
-        .where('account_id', '=', accountId)
-        .where('label_id', '=', id)
-        .execute();
+      await detachLabels(trx, accountId, [id]);
       await trx
         .deleteFrom('labels')
         .where('account_id', '=', accountId)

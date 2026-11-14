@@ -16,22 +16,19 @@ export class PgVectorStore implements VectorStore {
   async stale(accountId: string, model: string, limit: number) {
     const rows = await this.db
       .selectFrom('messages as m')
-      .leftJoin('email_embeddings as e', (join) =>
-        join.onRef('e.account_id', '=', 'm.account_id').onRef('e.message_id', '=', 'm.id'),
-      )
-      .select(['m.id', 'e.content_hash'])
+      .select(['m.id', 'm.embedding_hash'])
       .where('m.account_id', '=', accountId)
       .where((eb) =>
         eb.or([
-          eb('e.message_id', 'is', null),
-          eb('e.model', '<>', model),
-          eb(eb.ref('m.updated_at'), '>', eb.ref('e.embedded_at')),
+          eb('m.embedding', 'is', null),
+          eb('m.embedding_model', '<>', model),
+          eb(eb.ref('m.updated_at'), '>', eb.ref('m.embedded_at')),
         ]),
       )
       .orderBy('m.internal_date', 'desc')
       .limit(clamp(limit, 1, 1000))
       .execute();
-    return rows.map((r) => ({ messageId: r.id, contentHash: r.content_hash ?? undefined }));
+    return rows.map((r) => ({ messageId: r.id, contentHash: r.embedding_hash ?? undefined }));
   }
 
   async upsert(
@@ -45,37 +42,33 @@ export class PgVectorStore implements VectorStore {
         );
       }
     }
+    // Not updated_at: it marks content changes, which is what makes an embedding stale.
+    // Messages deleted meanwhile are skipped.
     for (const batch of chunk(items, 100)) {
-      await this.db
-        .insertInto('email_embeddings')
-        .values(
-          batch.map((i) => ({
-            account_id: accountId,
-            message_id: i.messageId,
-            model: i.model,
-            content_hash: i.contentHash,
-            embedding: toVector(i.embedding),
-          })),
-        )
-        .onConflict((oc) =>
-          oc.columns(['account_id', 'message_id']).doUpdateSet((eb) => ({
-            model: eb.ref('excluded.model'),
-            content_hash: eb.ref('excluded.content_hash'),
-            embedding: eb.ref('excluded.embedding'),
-            embedded_at: sql`now()`,
-          })),
-        )
-        .execute();
+      const values = sql.join(
+        batch.map(
+          (i) => sql`(${i.messageId}, ${i.model}, ${i.contentHash}, ${toVector(i.embedding)})`,
+        ),
+      );
+      await sql`
+        update messages m set
+          embedding = v.embedding::vector,
+          embedding_model = v.model,
+          embedding_hash = v.content_hash,
+          embedded_at = now()
+        from (values ${values}) as v (id, model, content_hash, embedding)
+        where m.account_id = ${accountId} and m.id = v.id`.execute(this.db);
     }
   }
 
   async touch(accountId: string, messageIds: string[]) {
     if (messageIds.length === 0) return;
     await this.db
-      .updateTable('email_embeddings')
+      .updateTable('messages')
       .set({ embedded_at: sql`now()` })
       .where('account_id', '=', accountId)
-      .where('message_id', 'in', messageIds)
+      .where('id', 'in', messageIds)
+      .where('embedding', 'is not', null)
       .execute();
   }
 
@@ -86,19 +79,17 @@ export class PgVectorStore implements VectorStore {
       await sql`set local hnsw.iterative_scan = relaxed_order`.execute(trx);
       await sql`set local hnsw.ef_search = 100`.execute(trx);
       const rows = await trx
-        .selectFrom('email_embeddings as e')
-        .innerJoin('messages as m', (join) =>
-          join.onRef('m.account_id', '=', 'e.account_id').onRef('m.id', '=', 'e.message_id'),
-        )
-        .select(['e.message_id', sql<number>`e.embedding <=> ${vector}::vector`.as('distance')])
-        .where('e.account_id', '=', accountId)
+        .selectFrom('messages as m')
+        .select(['m.id', sql<number>`m.embedding <=> ${vector}::vector`.as('distance')])
+        .where('m.account_id', '=', accountId)
+        .where('m.embedding', 'is not', null)
         .where((eb) => messageFilter(eb, filter))
-        .orderBy(sql`e.embedding <=> ${vector}::vector`)
+        .orderBy(sql`m.embedding <=> ${vector}::vector`)
         .limit(clamp(limit, 1, 500))
         .execute();
       // relaxed_order may return slightly out-of-order rows; sort precisely.
       return rows
-        .map((r) => ({ messageId: r.message_id, score: 1 - Number(r.distance) }))
+        .map((r) => ({ messageId: r.id, score: 1 - Number(r.distance) }))
         .sort((a, b) => b.score - a.score);
     });
   }
@@ -106,15 +97,9 @@ export class PgVectorStore implements VectorStore {
   async stats(accountId: string, model: string) {
     const row = await this.db
       .selectFrom('messages as m')
-      .leftJoin('email_embeddings as e', (join) =>
-        join
-          .onRef('e.account_id', '=', 'm.account_id')
-          .onRef('e.message_id', '=', 'm.id')
-          .on('e.model', '=', model),
-      )
-      .select((eb) => [
-        eb.fn.countAll<string>().as('total'),
-        eb.fn.count<string>('e.message_id').as('indexed'),
+      .select([
+        sql<string>`count(*)`.as('total'),
+        sql<string>`count(*) filter (where m.embedding_model = ${model})`.as('indexed'),
       ])
       .where('m.account_id', '=', accountId)
       .executeTakeFirstOrThrow();

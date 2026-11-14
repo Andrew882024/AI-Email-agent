@@ -1,6 +1,6 @@
 // Kysely table types. Mirrors migrations/; only db/ code imports this.
 import type { ColumnType, Generated } from 'kysely';
-import type { EmailAddress, StoredPart } from '../domain/types.js';
+import type { Attachment, EmailAddress, StoredPart } from '../domain/types.js';
 
 /** jsonb: parsed on select, written as a JSON string (node-pg would turn JS arrays into PG arrays). */
 type Json<T> = ColumnType<T, string, string>;
@@ -67,26 +67,18 @@ export interface MessagesTable {
   internal_date: Date;
   size_estimate: number | null;
   has_attachments: boolean;
+  /** Sorted Gmail label ids, system ones included; read/starred/inbox flags derive from it. */
+  label_ids: Generated<string[]>;
+  /** Ordered by partId. */
+  attachments: ColumnType<Attachment[], string | undefined, string>;
+  /** pgvector literal ('[0.1,0.2,...]') on write; not selected back. */
+  embedding: ColumnType<string | null, string | null | undefined, string | null>;
+  embedding_model: string | null;
+  embedding_hash: string | null;
+  embedded_at: Date | null;
   fts: ColumnType<string, never, never>;
   created_at: Generated<Date>;
   updated_at: Generated<Date>;
-}
-
-export interface MessageLabelsTable {
-  account_id: string;
-  message_id: string;
-  label_id: string;
-}
-
-export interface AttachmentsTable {
-  account_id: string;
-  message_id: string;
-  part_id: string;
-  attachment_id: string | null;
-  filename: string;
-  mime_type: string;
-  size: number;
-  content_id: string | null;
 }
 
 export interface TodosTable {
@@ -114,16 +106,6 @@ export interface OutboxOpsTable {
   next_attempt_at: Generated<Date>;
   created_at: Generated<Date>;
   updated_at: Generated<Date>;
-}
-
-export interface EmailEmbeddingsTable {
-  account_id: string;
-  message_id: string;
-  model: string;
-  content_hash: string;
-  /** pgvector literal ('[0.1,0.2,...]') on write; not selected back. */
-  embedding: ColumnType<string, string, string>;
-  embedded_at: Generated<Date>;
 }
 
 export interface ChatSessionsTable {
@@ -219,11 +201,8 @@ export interface Database {
   sessions: SessionsTable;
   labels: LabelsTable;
   messages: MessagesTable;
-  message_labels: MessageLabelsTable;
-  attachments: AttachmentsTable;
   todos: TodosTable;
   outbox_ops: OutboxOpsTable;
-  email_embeddings: EmailEmbeddingsTable;
   chat_sessions: ChatSessionsTable;
   chat_messages: ChatMessagesTable;
   tool_runs: ToolRunsTable;
