@@ -1,5 +1,5 @@
 import { ReauthRequiredError } from '../auth/errors.js';
-import type { Repositories } from '../core/db/repositories.js';
+import type { MailboxMirror } from '../mailbox/mirror.js';
 import type { OutboxOp } from '../shared/types.js';
 import type { EventBus } from '../shared/events/event-bus.js';
 import { isRetryableGoogleError } from '../shared/google/errors.js';
@@ -10,7 +10,8 @@ import type { MailSync } from './mail-sync.js';
 import type { OutboxOpName, OutboxPayloads } from '../mailbox/outbox-ops.js';
 
 export interface OutboxWorkerOptions {
-  repos: Repositories;
+  /** The queue to push and the todos it links to Google Tasks. */
+  mailbox: MailboxMirror;
   gateways: GatewayProvider;
   events: EventBus;
   actions: ActionLogger;
@@ -34,7 +35,7 @@ export class OutboxWorker {
   private readonly handlers: Handlers;
 
   constructor(private readonly options: OutboxWorkerOptions) {
-    const { repos, gateways, events } = options;
+    const { mailbox, gateways, events } = options;
     this.handlers = {
       modify_labels: async (accountId, p) => {
         await (
@@ -45,7 +46,7 @@ export class OutboxWorker {
         await (await gateways.gmail(accountId)).sendMessage(p.raw, p.threadId);
       },
       create_task: async (accountId, p) => {
-        if (!(await repos.todos.getById(p.todoId))) return; // removed before it was pushed
+        if (!(await mailbox.todos.getById(p.todoId))) return; // removed before it was pushed
         const tasks = await gateways.tasks(accountId);
         const tasklistId = await tasks.getDefaultTasklistId();
         const task = await tasks.createTask(tasklistId, {
@@ -53,7 +54,7 @@ export class OutboxWorker {
           notes: p.notes,
           due: p.due ? new Date(p.due) : undefined,
         });
-        const linked = await repos.todos.update(p.todoId, { googleTaskId: task.id, tasklistId });
+        const linked = await mailbox.todos.update(p.todoId, { googleTaskId: task.id, tasklistId });
         if (!linked) await tasks.deleteTask(tasklistId, task.id); // removed while being pushed
         events.emit('todos.changed', { accountId });
       },
@@ -67,7 +68,7 @@ export class OutboxWorker {
   async drain(accountId: string): Promise<number> {
     let processed = 0;
     for (;;) {
-      const op = await this.options.repos.outbox.claimNext(accountId);
+      const op = await this.options.mailbox.outbox.claimNext(accountId);
       if (!op) return processed;
       await this.execute(op);
       processed++;
@@ -75,19 +76,19 @@ export class OutboxWorker {
   }
 
   private async execute(op: OutboxOp): Promise<void> {
-    const { repos, events, logger } = this.options;
+    const { mailbox, events, logger } = this.options;
     const handler = this.handlers[op.op as OutboxOpName] as
       ((accountId: string, payload: unknown) => Promise<void>) | undefined;
     try {
       if (!handler) throw new Error(`Unknown outbox op "${op.op}"`);
       await handler(op.accountId, op.payload);
-      await repos.outbox.markDone(op.id);
+      await mailbox.outbox.markDone(op.id);
       return;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       if (err instanceof ReauthRequiredError) {
         // Not the op's fault: keep it until the user reconnects.
-        await repos.outbox.markRetry(op.id, message, REAUTH_RETRY_MS);
+        await mailbox.outbox.markRetry(op.id, message, REAUTH_RETRY_MS);
         events.emit('sync.status', {
           accountId: op.accountId,
           phase: 'reauth_required',
@@ -96,14 +97,14 @@ export class OutboxWorker {
         return;
       }
       if (isRetryableGoogleError(err) && op.attempts < (this.options.maxAttempts ?? 8)) {
-        await repos.outbox.markRetry(op.id, message, this.retryDelay(op.attempts));
+        await mailbox.outbox.markRetry(op.id, message, this.retryDelay(op.attempts));
         logger.warn(
           { err, opId: op.id, op: op.op, attempt: op.attempts },
           'outbox op will be retried',
         );
         return;
       }
-      await repos.outbox.markFailed(op.id, message);
+      await mailbox.outbox.markFailed(op.id, message);
       await this.options.actions.log({
         accountId: op.accountId,
         actor: 'sync',
@@ -126,9 +127,9 @@ export class OutboxWorker {
       await this.options.mailSync.refreshMessages(op.accountId, messageIds);
     } else if (op.op === 'create_task') {
       const { todoId } = op.payload as OutboxPayloads['create_task'];
-      const todo = await this.options.repos.todos.getById(todoId);
+      const todo = await this.options.mailbox.todos.getById(todoId);
       if (todo && !todo.googleTaskId) {
-        await this.options.repos.todos.delete(todoId);
+        await this.options.mailbox.todos.delete(todoId);
         this.options.events.emit('todos.changed', { accountId: op.accountId });
       }
     }

@@ -9,6 +9,7 @@ export * from './outbox-repository.js';
 export * from './vector-store.js';
 export * from './outbox-ops.js';
 export * from './mailbox.js';
+export * from './mirror.js';
 export * from './tools/compose.js';
 export * from './tools/email-tools.js';
 export * from './search/chunk.js';

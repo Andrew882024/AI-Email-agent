@@ -1,6 +1,7 @@
 import { ReauthRequiredError } from '../auth/errors.js';
 import type { GoogleAuthProvider } from '../auth/google-auth.js';
-import type { Repositories } from '../core/db/repositories.js';
+import type { AccountRepository } from '../auth/repositories.js';
+import type { MailboxMirror } from '../mailbox/mirror.js';
 import type { EventBus } from '../shared/events/event-bus.js';
 import type { Logger } from '../shared/logging/system-logger.js';
 import type { EmailIndexer } from '../mailbox/search/indexer.js';
@@ -52,7 +53,8 @@ class Loop {
 }
 
 export interface SyncSchedulerOptions {
-  repos: Repositories;
+  mailbox: MailboxMirror;
+  accounts: Pick<AccountRepository, 'list'>;
   auth: Pick<GoogleAuthProvider, 'isConnected'>;
   mailSync: MailSync;
   tasksSync: TasksSync;
@@ -90,7 +92,7 @@ export class SyncScheduler {
 
   async start(): Promise<void> {
     // Ops left in_progress by a crash are safe to retry.
-    const requeued = await this.options.repos.outbox.requeueInProgress();
+    const requeued = await this.options.mailbox.outbox.requeueInProgress();
     if (requeued > 0) this.options.logger.info({ requeued }, 'requeued interrupted outbox ops');
     const { events } = this.options;
     this.unsubscribers = [
@@ -99,7 +101,7 @@ export class SyncScheduler {
       events.on('message.updated', ({ accountId }) => this.accounts.get(accountId)?.index?.kick()),
     ];
     this.started = true;
-    for (const account of await this.options.repos.accounts.list()) this.addAccount(account.id);
+    for (const account of await this.options.accounts.list()) this.addAccount(account.id);
   }
 
   /** Start background work for an account (e.g. one that just signed in); if running, sync now. */

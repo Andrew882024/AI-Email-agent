@@ -1,4 +1,5 @@
-import type { Repositories } from '../core/db/repositories.js';
+import type { MailboxMirror } from '../mailbox/mirror.js';
+import type { SyncStateRepository } from './repositories.js';
 import type { EventBus } from '../shared/events/event-bus.js';
 import type { GatewayProvider } from '../shared/google/gateways.js';
 
@@ -8,14 +9,14 @@ const SKEW_MS = 60_000;
 /** Google Tasks → local todos: completion, edits and deletions made in Google's own apps. */
 export class TasksSync {
   constructor(
-    private readonly repos: Repositories,
+    private readonly repos: { mailbox: MailboxMirror; syncState: SyncStateRepository },
     private readonly gateways: GatewayProvider,
     private readonly events: EventBus,
     private readonly now: () => Date = () => new Date(),
   ) {}
 
   async sync(accountId: string): Promise<{ updated: number; deleted: number }> {
-    const todos = (await this.repos.todos.list(accountId)).filter(
+    const todos = (await this.repos.mailbox.todos.list(accountId)).filter(
       (t) => t.googleTaskId && t.tasklistId,
     );
     if (todos.length === 0) return { updated: 0, deleted: 0 };
@@ -33,7 +34,7 @@ export class TasksSync {
         const todo = byTaskId.get(task.id);
         if (!todo) continue; // not created by this app
         if (task.deleted) {
-          await this.repos.todos.delete(todo.id);
+          await this.repos.mailbox.todos.delete(todo.id);
           deleted++;
           continue;
         }
@@ -43,7 +44,7 @@ export class TasksSync {
           todo.due?.getTime() !== task.due?.getTime() ||
           todo.completedAt?.getTime() !== task.completedAt?.getTime();
         if (!changed) continue;
-        await this.repos.todos.update(todo.id, {
+        await this.repos.mailbox.todos.update(todo.id, {
           title: task.title,
           status: task.status,
           due: task.due ?? null,

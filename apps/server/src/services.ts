@@ -1,6 +1,7 @@
 // Composition root: wires the core modules into one set of services for the HTTP server.
 import { join } from 'node:path';
 import {
+  createMailboxMirror,
   ActionLogger,
   ChatAgent,
   ChatFileStore,
@@ -83,16 +84,22 @@ export function createServices(config: AppConfig): Services {
   const gateways = new GoogleGatewayProvider(auth, {
     gmailUnitsPerMinute: config.sync.gmailQuotaPerMinute,
   });
+  const mirror = createMailboxMirror(repos);
   const mailSync = new MailSync({
-    repos,
+    mailbox: mirror,
+    syncState: repos.syncState,
     gateways,
     events,
     actions,
     logger,
     windowDays: config.sync.windowDays,
   });
-  const outbox = new OutboxWorker({ repos, gateways, events, actions, logger, mailSync });
-  const tasksSync = new TasksSync(repos, gateways, events);
+  const outbox = new OutboxWorker({ mailbox: mirror, gateways, events, actions, logger, mailSync });
+  const tasksSync = new TasksSync(
+    { mailbox: mirror, syncState: repos.syncState },
+    gateways,
+    events,
+  );
   const embeddings = config.geminiApiKey
     ? new GeminiEmbeddings({
         apiKey: config.geminiApiKey,
@@ -105,7 +112,8 @@ export function createServices(config: AppConfig): Services {
       ? new EmailIndexer({ repos, embeddings, events, logger })
       : undefined;
   const scheduler = new SyncScheduler({
-    repos,
+    mailbox: mirror,
+    accounts: repos.accounts,
     auth,
     mailSync,
     tasksSync,

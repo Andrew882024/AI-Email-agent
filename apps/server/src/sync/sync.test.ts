@@ -1,3 +1,4 @@
+import { createMailboxMirror } from '../mailbox/mirror.js';
 import { sql } from 'kysely';
 import { pino } from 'pino';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -35,7 +36,8 @@ describe.skipIf(!testDatabaseUrl)('sync', () => {
   const build = (windowDays = 30) => {
     const actions = new ActionLogger(repos.actionLogs, logger);
     mailSync = new MailSync({
-      repos,
+      mailbox: createMailboxMirror(repos),
+      syncState: repos.syncState,
       gateways: google,
       events,
       actions,
@@ -45,7 +47,7 @@ describe.skipIf(!testDatabaseUrl)('sync', () => {
     });
     mailbox = new MailboxService(repos, events);
     worker = new OutboxWorker({
-      repos,
+      mailbox: createMailboxMirror(repos),
       gateways: google,
       events,
       actions,
@@ -54,7 +56,11 @@ describe.skipIf(!testDatabaseUrl)('sync', () => {
       retryDelayMs: () => 0,
       maxAttempts: 3,
     });
-    tasksSync = new TasksSync(repos, google, events);
+    tasksSync = new TasksSync(
+      { mailbox: createMailboxMirror(repos), syncState: repos.syncState },
+      google,
+      events,
+    );
   };
   const labelsOf = async (id: string) => (await repos.messages.getById(accountId, id))?.labelIds;
   const eventsOf = <K extends AppEventName>(name: K) =>
@@ -158,6 +164,19 @@ describe.skipIf(!testDatabaseUrl)('sync', () => {
       google.fakeGmail.add({ id: 'm2', date: daysAgo(2) }, false);
       await mailSync.sync(accountId);
       seen = [];
+    });
+
+    it('never queues changes that came from Gmail back to Gmail', async () => {
+      const gmail = google.fakeGmail;
+      gmail.add({ id: 'm3' });
+      gmail.relabel('m1', { add: ['STARRED'], remove: ['UNREAD', 'INBOX'] });
+      gmail.remove('m2');
+      await mailSync.sync(accountId);
+      await mailSync.refreshMessages(accountId, ['m1', 'm3']);
+
+      expect(await labelsOf('m1')).toEqual(['STARRED']);
+      expect(await repos.outbox.listActive(accountId)).toEqual([]);
+      expect(await worker.drain(accountId)).toBe(0);
     });
 
     it('applies new mail, web-side label changes and deletions', async () => {
@@ -357,7 +376,8 @@ describe.skipIf(!testDatabaseUrl)('sync', () => {
     it('syncs connected accounts in the background and pushes changes as they are queued', async () => {
       google.fakeGmail.add({ id: 'm1', date: daysAgo(1) }, false);
       const scheduler = new SyncScheduler({
-        repos,
+        mailbox: createMailboxMirror(repos),
+        accounts: repos.accounts,
         auth: { isConnected: async () => true },
         mailSync,
         tasksSync,
@@ -384,7 +404,8 @@ describe.skipIf(!testDatabaseUrl)('sync', () => {
     it('indexes new mail for semantic search as it arrives', async () => {
       const embeddings = new FakeEmbeddings();
       const scheduler = new SyncScheduler({
-        repos,
+        mailbox: createMailboxMirror(repos),
+        accounts: repos.accounts,
         auth: { isConnected: async () => true },
         mailSync,
         tasksSync,
@@ -419,7 +440,8 @@ describe.skipIf(!testDatabaseUrl)('sync', () => {
       let releaseFirst!: () => void;
       const firstStuck = new Promise<void>((resolve) => (releaseFirst = resolve));
       const scheduler = new SyncScheduler({
-        repos,
+        mailbox: createMailboxMirror(repos),
+        accounts: repos.accounts,
         auth: { isConnected: async () => true },
         mailSync: {
           sync: async (id: string) => {
@@ -454,7 +476,8 @@ describe.skipIf(!testDatabaseUrl)('sync', () => {
     it('reports accounts that need reconnecting without stopping', async () => {
       google.failWith = new ReauthRequiredError(accountId, 'expired');
       const scheduler = new SyncScheduler({
-        repos,
+        mailbox: createMailboxMirror(repos),
+        accounts: repos.accounts,
         auth: { isConnected: async () => true },
         mailSync,
         tasksSync,

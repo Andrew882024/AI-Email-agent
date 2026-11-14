@@ -1,3 +1,4 @@
+import { createMailboxMirror } from '../../mailbox/mirror.js';
 import { sql } from 'kysely';
 import { pino } from 'pino';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -164,10 +165,25 @@ describe.skipIf(!testDatabaseUrl)('workflows', () => {
       },
       false,
     );
-    mailSync = new MailSync({ repos, gateways: google, events, actions, logger, windowDays: 3650 });
+    mailSync = new MailSync({
+      mailbox: createMailboxMirror(repos),
+      syncState: repos.syncState,
+      gateways: google,
+      events,
+      actions,
+      logger,
+      windowDays: 3650,
+    });
     await mailSync.sync(accountId);
     await new EmailIndexer({ repos, embeddings, events, logger }).indexAll(accountId);
-    worker = new OutboxWorker({ repos, gateways: google, events, actions, logger, mailSync });
+    worker = new OutboxWorker({
+      mailbox: createMailboxMirror(repos),
+      gateways: google,
+      events,
+      actions,
+      logger,
+      mailSync,
+    });
 
     decide = (text) =>
       /amount due/i.test(text) && /invoice/i.test(text)

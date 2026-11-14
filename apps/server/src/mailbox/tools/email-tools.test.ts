@@ -1,3 +1,4 @@
+import { createMailboxMirror } from '../mirror.js';
 import { sql } from 'kysely';
 import { pino } from 'pino';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -55,7 +56,8 @@ describe.skipIf(!testDatabaseUrl)('email tools', () => {
     const events = new EventBus(logger);
     const actions = new ActionLogger(repos.actionLogs, logger);
     const mailSync = new MailSync({
-      repos,
+      mailbox: createMailboxMirror(repos),
+      syncState: repos.syncState,
       gateways: google,
       events,
       actions,
@@ -63,7 +65,14 @@ describe.skipIf(!testDatabaseUrl)('email tools', () => {
       windowDays: 30,
     });
     const mailbox = new MailboxService(repos, events);
-    worker = new OutboxWorker({ repos, gateways: google, events, actions, logger, mailSync });
+    worker = new OutboxWorker({
+      mailbox: createMailboxMirror(repos),
+      gateways: google,
+      events,
+      actions,
+      logger,
+      mailSync,
+    });
     tools = new ToolRegistry(actions).register(
       ...createEmailTools({
         repos,
@@ -393,7 +402,8 @@ describe.skipIf(!testDatabaseUrl)('email tools', () => {
     const events = new EventBus(logger);
     const actions = new ActionLogger(repos.actionLogs, logger);
     await new MailSync({
-      repos,
+      mailbox: createMailboxMirror(repos),
+      syncState: repos.syncState,
       gateways: google,
       events,
       actions,

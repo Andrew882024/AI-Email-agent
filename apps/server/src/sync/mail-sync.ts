@@ -1,4 +1,4 @@
-import type { Repositories } from '../core/db/repositories.js';
+import type { MailboxMirror } from '../mailbox/mirror.js';
 import type { FullSyncCheckpoint } from '../shared/types.js';
 import type { EventBus } from '../shared/events/event-bus.js';
 import { HistoryExpiredError } from '../shared/google/errors.js';
@@ -6,11 +6,13 @@ import type { GatewayProvider, GmailGateway } from '../shared/google/gateways.js
 import { mapLimit } from '../shared/google/retry.js';
 import type { ActionLogger } from '../shared/logging/action-logger.js';
 import type { Logger } from '../shared/logging/system-logger.js';
-import type { OutboxPayloads } from '../mailbox/outbox-ops.js';
+import type { SyncStateRepository } from './repositories.js';
 import { parseGmailLabel, parseGmailMessage } from '../shared/google/parse-message.js';
 
 export interface MailSyncOptions {
-  repos: Repositories;
+  /** Sync writes the mailbox only through this; it never queues changes back to Google. */
+  mailbox: MailboxMirror;
+  syncState: SyncStateRepository;
   gateways: GatewayProvider;
   events: EventBus;
   actions: ActionLogger;
@@ -38,11 +40,11 @@ export class MailSync {
 
   /** One pass: refresh labels, then continue/start a full sync or apply new history. */
   async sync(accountId: string): Promise<SyncResult> {
-    const { repos } = this.options;
+    const { syncState } = this.options;
     const gmail = await this.options.gateways.gmail(accountId);
     await this.syncLabels(accountId, gmail);
 
-    const { fullSync, historyId } = await repos.syncState.get(accountId);
+    const { fullSync, historyId } = await syncState.get(accountId);
     if (fullSync) return this.runFullSync(accountId, gmail, fullSync);
     if (!historyId)
       return this.runFullSync(accountId, gmail, await this.startFullSync(accountId, gmail));
@@ -61,10 +63,10 @@ export class MailSync {
    * sync began. Nothing is swept. Returns false if no full sync was in progress.
    */
   async finishFullSyncEarly(accountId: string): Promise<boolean> {
-    const { repos } = this.options;
-    const { fullSync } = await repos.syncState.get(accountId);
+    const { syncState } = this.options;
+    const { fullSync } = await syncState.get(accountId);
     if (!fullSync) return false;
-    await repos.syncState.update(accountId, {
+    await syncState.update(accountId, {
       historyId: fullSync.historyId,
       lastFullSyncAt: this.now(),
       fullSync: null,
@@ -85,19 +87,19 @@ export class MailSync {
     const gmail = await this.options.gateways.gmail(accountId);
     const stored = new Set(await this.fetchAndStore(accountId, gmail, ids));
     const gone = ids.filter((id) => !stored.has(id));
-    await this.options.repos.messages.deleteMany(accountId, gone);
+    await this.options.mailbox.deleteMessages(accountId, gone);
     this.emitIfAny('message.updated', accountId, [...stored]);
     this.emitIfAny('message.deleted', accountId, gone);
   }
 
   private async syncLabels(accountId: string, gmail: GmailGateway): Promise<void> {
-    const { repos, events } = this.options;
+    const { mailbox, events } = this.options;
     const remote = (await gmail.listLabels()).flatMap((l) => parseGmailLabel(l) ?? []);
-    const local = await repos.labels.list(accountId);
+    const local = await mailbox.listLabels(accountId);
     const key = (labels: typeof remote) =>
       JSON.stringify([...labels].sort((a, b) => a.id.localeCompare(b.id)));
     if (key(remote) === key(local)) return;
-    await repos.labels.replaceAll(accountId, remote);
+    await mailbox.replaceLabels(accountId, remote);
     events.emit('labels.changed', { accountId });
   }
 
@@ -105,7 +107,7 @@ export class MailSync {
     const { windowDays } = this.options;
     // Capture historyId before listing so changes made during the sync are replayed afterwards.
     const { historyId } = await gmail.getProfile();
-    return this.options.repos.syncState.beginFullSync(accountId, {
+    return this.options.syncState.beginFullSync(accountId, {
       historyId,
       ...(windowDays > 0 && {
         windowStart: new Date(this.now().getTime() - windowDays * DAY_MS),
@@ -118,7 +120,7 @@ export class MailSync {
     gmail: GmailGateway,
     checkpoint: FullSyncCheckpoint,
   ): Promise<SyncResult> {
-    const { repos, events } = this.options;
+    const { mailbox, syncState, events } = this.options;
     const started = performance.now();
     const query = checkpoint.windowStart
       ? `after:${Math.floor(checkpoint.windowStart.getTime() / 1000)}`
@@ -132,19 +134,19 @@ export class MailSync {
       const stored = await this.fetchAndStore(accountId, gmail, page.ids);
       cp = { ...cp, pageToken: page.nextPageToken, synced: cp.synced + stored.length };
       // Checkpoint after every page so a restart resumes here.
-      if (cp.pageToken) await repos.syncState.update(accountId, { fullSync: cp });
+      if (cp.pageToken) await syncState.update(accountId, { fullSync: cp });
       // Backfilled mail is not "new mail", so this is message.updated rather than message.added.
       this.emitIfAny('message.updated', accountId, stored);
       events.emit('sync.status', { accountId, phase: 'full_sync', synced: cp.synced });
     } while (cp.pageToken);
 
-    await repos.syncState.update(accountId, {
+    await syncState.update(accountId, {
       historyId: cp.historyId,
       lastFullSyncAt: this.now(),
       fullSync: null,
     });
     // Anything in the window that this pass didn't refresh no longer exists in Gmail.
-    const deleted = await repos.messages.sweepStale(accountId, {
+    const deleted = await mailbox.sweepStale(accountId, {
       updatedBefore: cp.startedAt,
       receivedSince: cp.windowStart,
     });
@@ -166,7 +168,7 @@ export class MailSync {
     gmail: GmailGateway,
     startHistoryId: string,
   ): Promise<SyncResult> {
-    const { repos } = this.options;
+    const { mailbox, syncState } = this.options;
     const started = performance.now();
     const added = new Set<string>();
     const deleted = new Set<string>();
@@ -192,12 +194,12 @@ export class MailSync {
         // get their current labels when fetched below.
         for (const { message, labelIds } of record.labelsAdded ?? []) {
           if (!message?.id || deleted.has(message.id) || !labelIds?.length) continue;
-          await repos.messages.modifyLabels(accountId, [message.id], { add: labelIds });
+          await mailbox.applyLabelChanges(accountId, [message.id], { add: labelIds });
           relabeled.add(message.id);
         }
         for (const { message, labelIds } of record.labelsRemoved ?? []) {
           if (!message?.id || deleted.has(message.id) || !labelIds?.length) continue;
-          await repos.messages.modifyLabels(accountId, [message.id], { remove: labelIds });
+          await mailbox.applyLabelChanges(accountId, [message.id], { remove: labelIds });
           relabeled.add(message.id);
         }
       }
@@ -206,10 +208,10 @@ export class MailSync {
     } while (pageToken);
 
     const stored = await this.fetchAndStore(accountId, gmail, [...added]);
-    await repos.messages.deleteMany(accountId, [...deleted]);
+    await mailbox.deleteMessages(accountId, [...deleted]);
     const updated = [...relabeled].filter((id) => !added.has(id));
-    await this.reapplyPending(accountId, updated);
-    await repos.syncState.update(accountId, { historyId: latest });
+    await mailbox.keepPendingChanges(accountId, updated);
+    await syncState.update(accountId, { historyId: latest });
 
     this.emitIfAny('message.added', accountId, stored);
     this.emitIfAny('message.updated', accountId, updated);
@@ -254,30 +256,9 @@ export class MailSync {
         return [];
       }
     });
-    await this.options.repos.messages.upsertMany(accountId, parsed);
+    await this.options.mailbox.storeMessages(accountId, parsed);
     const storedIds = parsed.map((m) => m.id);
-    await this.reapplyPending(accountId, storedIds);
     return storedIds;
-  }
-
-  /**
-   * Fresh Gmail state may predate local changes still queued in the outbox; re-apply those so the
-   * UI doesn't flicker back to the old state before the push lands.
-   */
-  private async reapplyPending(accountId: string, ids: string[]): Promise<void> {
-    if (ids.length === 0) return;
-    const touched = new Set(ids);
-    for (const op of await this.options.repos.outbox.listActive(accountId)) {
-      if (op.op !== 'modify_labels') continue;
-      const payload = op.payload as OutboxPayloads['modify_labels'];
-      const hit = payload.messageIds.filter((id) => touched.has(id));
-      if (hit.length > 0) {
-        await this.options.repos.messages.modifyLabels(accountId, hit, {
-          add: payload.add,
-          remove: payload.remove,
-        });
-      }
-    }
   }
 
   private emitIfAny(

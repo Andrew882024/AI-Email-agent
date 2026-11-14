@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import {
+  createMailboxMirror,
   ActionLogger,
   AesGcmSecretCipher,
   ChatAgent,
@@ -99,14 +100,22 @@ describe.skipIf(!testDatabaseUrl)('HTTP API', () => {
     events = new EventBus(logger);
     const actions = new ActionLogger(repos.actionLogs, logger);
     const mailSync = new MailSync({
-      repos,
+      mailbox: createMailboxMirror(repos),
+      syncState: repos.syncState,
       gateways: google,
       events,
       actions,
       logger,
       windowDays: 30,
     });
-    worker = new OutboxWorker({ repos, gateways: google, events, actions, logger, mailSync });
+    worker = new OutboxWorker({
+      mailbox: createMailboxMirror(repos),
+      gateways: google,
+      events,
+      actions,
+      logger,
+      mailSync,
+    });
     const mailbox = new MailboxService(repos, events);
     tools = new ToolRegistry(actions).register(
       ...createEmailTools({

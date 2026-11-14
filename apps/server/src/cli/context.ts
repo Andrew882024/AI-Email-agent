@@ -1,4 +1,5 @@
 // Wires the core services for command-line tools (the server will have its own composition root).
+import { createMailboxMirror } from '../mailbox/mirror.js';
 import { join } from 'node:path';
 import { AUTH_CALLBACK_PATH, GoogleOAuthService } from '../auth/google-auth.js';
 import { AesGcmSecretCipher } from '../auth/secret-cipher.js';
@@ -42,18 +43,25 @@ export function createCliContext() {
   const gateways = new GoogleGatewayProvider(auth, {
     gmailUnitsPerMinute: config.sync.gmailQuotaPerMinute,
   });
+  const mirror = createMailboxMirror(repos);
   const mailSync = new MailSync({
-    repos,
+    mailbox: mirror,
+    syncState: repos.syncState,
     gateways,
     events,
     actions,
     logger,
     windowDays: config.sync.windowDays,
   });
-  const outbox = new OutboxWorker({ repos, gateways, events, actions, logger, mailSync });
-  const tasksSync = new TasksSync(repos, gateways, events);
+  const outbox = new OutboxWorker({ mailbox: mirror, gateways, events, actions, logger, mailSync });
+  const tasksSync = new TasksSync(
+    { mailbox: mirror, syncState: repos.syncState },
+    gateways,
+    events,
+  );
   const scheduler = new SyncScheduler({
-    repos,
+    mailbox: mirror,
+    accounts: repos.accounts,
     auth,
     mailSync,
     tasksSync,

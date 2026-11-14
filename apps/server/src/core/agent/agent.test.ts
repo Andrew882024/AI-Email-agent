@@ -1,3 +1,4 @@
+import { createMailboxMirror } from '../../mailbox/mirror.js';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -116,9 +117,15 @@ describe.skipIf(!testDatabaseUrl)('ChatAgent', () => {
         { id: `n${i}`, subject: `Newsletter ${i}`, date: new Date('2026-09-01') },
         false,
       );
-    await new MailSync({ repos, gateways: google, events, actions, logger, windowDays: 3650 }).sync(
-      accountId,
-    );
+    await new MailSync({
+      mailbox: createMailboxMirror(repos),
+      syncState: repos.syncState,
+      gateways: google,
+      events,
+      actions,
+      logger,
+      windowDays: 3650,
+    }).sync(accountId);
     tools = new ToolRegistry(actions).register(
       ...createEmailTools({
         repos,
