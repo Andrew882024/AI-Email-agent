@@ -29,6 +29,7 @@ import { z } from 'zod';
 import { registerAuthRoutes, requestAccount } from './auth/routes.js';
 import { Sessions } from './auth/sessions.js';
 import { registerMailboxRoutes } from './mailbox/routes.js';
+import { registerSyncRoutes } from './sync/routes.js';
 import { HttpError } from './shared/http.js';
 
 export interface ServerDeps {
@@ -218,23 +219,11 @@ export async function buildServer(
     });
   });
 
-  app.get('/api/sync/status', async (req) => {
-    const account = await requireAccount(req);
-    const [state, pending] = await Promise.all([
-      repos.syncState.get(account.id),
-      repos.outbox.listActive(account.id),
-    ]);
-    return {
-      historyId: account.historyId,
-      lastFullSyncAt: account.lastFullSyncAt,
-      fullSync: state.fullSync,
-      outboxPending: pending.length,
-    };
-  });
-
-  app.post('/api/sync/now', async (req) => {
-    scheduler.syncNow((await requireAccount(req)).id);
-    return { ok: true };
+  registerSyncRoutes(app, {
+    access,
+    syncState: repos.syncState,
+    outbox: repos.outbox,
+    scheduler,
   });
 
   // ---------- assistant ----------

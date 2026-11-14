@@ -13,9 +13,6 @@ export interface Account {
   email: string;
   googleSub: string;
   displayName?: string;
-  /** Gmail historyId of the last applied sync point. */
-  historyId?: string;
-  lastFullSyncAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -159,6 +156,9 @@ export interface FullSyncCheckpoint {
 
 export interface SyncState {
   accountId: string;
+  /** Gmail historyId of the last applied sync point; absent before the first full sync ends. */
+  historyId?: string;
+  lastFullSyncAt?: Date;
   /** Set while a full sync is in progress (also across restarts). */
   fullSync?: FullSyncCheckpoint;
   /** Google Tasks were polled up to this time. */

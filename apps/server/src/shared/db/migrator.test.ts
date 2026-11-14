@@ -1,7 +1,7 @@
 import { sql } from 'kysely';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createTestDatabase, type TestDatabase, testDatabaseUrl } from '../testing/db.js';
-import { migrateDown, migrateReset, migrateToLatest } from './migrator.js';
+import { migrateDown, migrateReset, migrateTo, migrateToLatest } from './migrator.js';
 
 /** Every migration in order, with the app tables it creates and drops. */
 const HISTORY: { name: string; adds?: string[]; drops?: string[] }[] = [
@@ -38,6 +38,7 @@ const HISTORY: { name: string; adds?: string[]; drops?: string[] }[] = [
   },
   { name: '0012_merge_tool_runs', drops: ['tool_runs'] },
   { name: '0013_restore_action_logs', adds: ['action_logs'] },
+  { name: '0014_split_sync_state', adds: ['sync_state'] },
 ];
 
 /** The app tables after the first `count` migrations, sorted. */
@@ -65,15 +66,6 @@ describe.skipIf(!testDatabaseUrl)('migrator', () => {
     return rows.map((r) => r.tablename);
   };
 
-  /** Revert migrations, newest first, until `name` has been reverted. */
-  const revertThrough = async (name: string) => {
-    for (;;) {
-      const [result] = await migrateDown(t.db);
-      if (!result) throw new Error(`${name} was never applied`);
-      if (result.migrationName === name) return;
-    }
-  };
-
   it('migrates up, down one at a time and up again', async () => {
     const up = await migrateToLatest(t.db);
     expect(up.map((r) => [r.migrationName, r.status])).toEqual(
@@ -98,7 +90,8 @@ describe.skipIf(!testDatabaseUrl)('migrator', () => {
   });
 
   it('rebuilds threads from messages when 0008 is reverted', async () => {
-    await migrateToLatest(t.db);
+    await migrateReset(t.db);
+    await migrateTo(t.db, '0008_drop_threads');
     await sql`insert into accounts (id, email, google_sub)
       values ('00000000-0000-0000-0000-000000000001', 'me@example.com', 'sub')`.execute(t.db);
     await sql`insert into messages (account_id, id, thread_id, snippet, internal_date) values
@@ -107,18 +100,17 @@ describe.skipIf(!testDatabaseUrl)('migrator', () => {
       t.db,
     );
 
-    await revertThrough('0008_drop_threads');
+    await migrateDown(t.db);
     const { rows } = await sql<{ id: string; snippet: string }>`
       select id, snippet from threads`.execute(t.db);
     expect(rows).toEqual([{ id: 'T', snippet: 'new' }]);
 
-    await migrateToLatest(t.db);
     await migrateReset(t.db);
   });
 
   it('moves OAuth tokens and sync state onto accounts and back (0010)', async () => {
-    await migrateToLatest(t.db);
-    await revertThrough('0010_merge_account_state');
+    await migrateReset(t.db);
+    await migrateTo(t.db, '0009_drop_action_logs');
     await sql`insert into accounts (id, email, google_sub) values
       ('00000000-0000-0000-0000-000000000001', 'a@example.com', 'a'),
       ('00000000-0000-0000-0000-000000000002', 'b@example.com', 'b')`.execute(t.db);
@@ -128,7 +120,7 @@ describe.skipIf(!testDatabaseUrl)('migrator', () => {
         full_sync_page_token, full_sync_count)
       values ('00000000-0000-0000-0000-000000000001', now(), '42', 'page-3', 7)`.execute(t.db);
 
-    await migrateToLatest(t.db);
+    await migrateTo(t.db, '0010_merge_account_state');
     const { rows } = await sql<Record<string, unknown>>`
       select email, encrypted_refresh_token, oauth_scopes, full_sync_history_id,
         full_sync_page_token, full_sync_count
@@ -152,7 +144,7 @@ describe.skipIf(!testDatabaseUrl)('migrator', () => {
       },
     ]);
 
-    await revertThrough('0010_merge_account_state');
+    await migrateDown(t.db);
     const tokens = await sql<Record<string, unknown>>`
       select encrypted_refresh_token, scopes from oauth_tokens`.execute(t.db);
     expect(tokens.rows).toEqual([{ encrypted_refresh_token: 'cipher', scopes: ['gmail'] }]);
@@ -160,13 +152,12 @@ describe.skipIf(!testDatabaseUrl)('migrator', () => {
       select full_sync_history_id, full_sync_count from sync_state`.execute(t.db);
     expect(syncs.rows).toEqual([{ full_sync_history_id: '42', full_sync_count: 7 }]);
 
-    await migrateToLatest(t.db);
     await migrateReset(t.db);
   });
 
   it('moves labels, attachments and embeddings onto messages and back (0011)', async () => {
-    await migrateToLatest(t.db);
-    await revertThrough('0011_merge_message_parts');
+    await migrateReset(t.db);
+    await migrateTo(t.db, '0010_merge_account_state');
     const account = '00000000-0000-0000-0000-000000000001';
     const vector = `[${Array.from({ length: 1536 }, (_, i) => (i === 0 ? 1 : 0)).join(',')}]`;
     await sql`insert into accounts (id, email, google_sub)
@@ -182,7 +173,7 @@ describe.skipIf(!testDatabaseUrl)('migrator', () => {
     await sql`insert into email_embeddings (account_id, message_id, model, content_hash, embedding)
       values (${account}, 'm1', 'model-a', 'hash-1', ${vector}::vector)`.execute(t.db);
 
-    await migrateToLatest(t.db);
+    await migrateTo(t.db, '0011_merge_message_parts');
     const { rows } = await sql<Record<string, unknown>>`
       select id, label_ids, attachments, embedding_model, embedding_hash,
         embedding is not null as embedded
@@ -215,7 +206,7 @@ describe.skipIf(!testDatabaseUrl)('migrator', () => {
       },
     ]);
 
-    await revertThrough('0011_merge_message_parts');
+    await migrateDown(t.db);
     const labels = await sql<Record<string, unknown>>`
       select message_id, label_id from message_labels order by label_id`.execute(t.db);
     expect(labels.rows).toEqual([
@@ -236,13 +227,12 @@ describe.skipIf(!testDatabaseUrl)('migrator', () => {
       { message_id: 'm1', model: 'model-a', content_hash: 'hash-1' },
     ]);
 
-    await migrateToLatest(t.db);
     await migrateReset(t.db);
   });
 
   it('moves tool runs onto their chat message and back, keeping ids (0012)', async () => {
-    await migrateToLatest(t.db);
-    await revertThrough('0012_merge_tool_runs');
+    await migrateReset(t.db);
+    await migrateTo(t.db, '0011_merge_message_parts');
     const account = '00000000-0000-0000-0000-000000000001';
     const session = '00000000-0000-0000-0000-0000000000a1';
     const run1 = '00000000-0000-0000-0000-0000000000b1';
@@ -264,7 +254,7 @@ describe.skipIf(!testDatabaseUrl)('migrator', () => {
       (${run1}, ${session}, ${modelMessage}, 0, 'c1', 'star', '{"messageIds":["m1"]}',
         'done', '{"updated":1}', now())`.execute(t.db);
 
-    await migrateToLatest(t.db);
+    await migrateTo(t.db, '0012_merge_tool_runs');
     const { rows } = await sql<{ id: string; tool_runs: Record<string, unknown>[] }>`
       select id, tool_runs from chat_messages order by id`.execute(t.db);
     expect(rows.map((r) => r.tool_runs.map((run) => [run.id, run.position]))).toEqual([
@@ -285,7 +275,7 @@ describe.skipIf(!testDatabaseUrl)('migrator', () => {
     expect(rows[0]?.tool_runs[1]).not.toHaveProperty('callId');
     expect(rows[0]?.tool_runs[1]).not.toHaveProperty('resolvedAt');
 
-    await revertThrough('0012_merge_tool_runs');
+    await migrateDown(t.db);
     const back = await sql<Record<string, unknown>>`
       select id, message_id, position, call_id, status, result from tool_runs
       order by position`.execute(t.db);
@@ -308,7 +298,33 @@ describe.skipIf(!testDatabaseUrl)('migrator', () => {
       },
     ]);
 
-    await migrateToLatest(t.db);
+    await migrateReset(t.db);
+  });
+
+  it('moves sync progress from accounts to sync_state and back (0014)', async () => {
+    await migrateReset(t.db);
+    await migrateTo(t.db, '0013_restore_action_logs');
+    await sql`insert into accounts (id, email, google_sub, history_id, full_sync_page_token,
+        full_sync_count, tasks_synced_at)
+      values ('00000000-0000-0000-0000-000000000001', 'a@example.com', 'a', '42', 'page-3', 7,
+        '2026-01-01T00:00:00Z')`.execute(t.db);
+
+    await migrateTo(t.db, '0014_split_sync_state');
+    const { rows } = await sql<Record<string, unknown>>`
+      select history_id, full_sync_page_token, full_sync_count from sync_state`.execute(t.db);
+    expect(rows).toEqual([
+      { history_id: '42', full_sync_page_token: 'page-3', full_sync_count: 7 },
+    ]);
+    const columns = await sql<{ column_name: string }>`
+      select column_name from information_schema.columns
+      where table_name = 'accounts' and column_name like '%sync%'`.execute(t.db);
+    expect(columns.rows).toEqual([]);
+
+    await migrateDown(t.db);
+    const back = await sql<Record<string, unknown>>`
+      select history_id, full_sync_count from accounts`.execute(t.db);
+    expect(back.rows).toEqual([{ history_id: '42', full_sync_count: 7 }]);
+
     await migrateReset(t.db);
   });
 });

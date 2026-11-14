@@ -9,7 +9,7 @@ import {
   parseAddresses,
   parseGmailLabel,
   parseGmailMessage,
-} from '../../core/sync/parse-message.js';
+} from '../../shared/google/parse-message.js';
 import {
   buildMime,
   forwardBody,

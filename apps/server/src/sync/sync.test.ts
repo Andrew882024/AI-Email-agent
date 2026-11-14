@@ -1,17 +1,17 @@
 import { sql } from 'kysely';
 import { pino } from 'pino';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { FakeGateways, googleError } from '../../shared/testing/fake-google.js';
-import { createTestDatabase, type TestDatabase, testDatabaseUrl } from '../../shared/testing/db.js';
-import { ReauthRequiredError } from '../../auth/errors.js';
-import { createPgRepositories } from '../db/pg/index.js';
-import type { Repositories } from '../db/repositories.js';
-import { type AppEventName, type AppEvents, EventBus } from '../../shared/events/event-bus.js';
-import { ActionLogger } from '../../shared/logging/action-logger.js';
-import { FakeEmbeddings } from '../../shared/testing/fake-llm.js';
-import { EmailIndexer } from '../../mailbox/search/indexer.js';
+import { FakeGateways, googleError } from '../shared/testing/fake-google.js';
+import { createTestDatabase, type TestDatabase, testDatabaseUrl } from '../shared/testing/db.js';
+import { ReauthRequiredError } from '../auth/errors.js';
+import { createPgRepositories } from '../core/db/pg/index.js';
+import type { Repositories } from '../core/db/repositories.js';
+import { type AppEventName, type AppEvents, EventBus } from '../shared/events/event-bus.js';
+import { ActionLogger } from '../shared/logging/action-logger.js';
+import { FakeEmbeddings } from '../shared/testing/fake-llm.js';
+import { EmailIndexer } from '../mailbox/search/indexer.js';
 import { MailSync } from './mail-sync.js';
-import { MailboxService } from '../../mailbox/mailbox.js';
+import { MailboxService } from '../mailbox/mailbox.js';
 import { OutboxWorker } from './outbox-worker.js';
 import { SyncScheduler } from './scheduler.js';
 import { TasksSync } from './tasks-sync.js';
@@ -101,7 +101,7 @@ describe.skipIf(!testDatabaseUrl)('sync', () => {
       expect(items.map((m) => m.id)).toEqual(['m1', 'm2', 'm3', 'm4', 'm5']);
       expect(items[0]).toMatchObject({ subject: 'Subject m1', isRead: false, inInbox: true });
       expect((await repos.labels.list(accountId)).map((l) => l.id)).toContain('STARRED');
-      expect((await repos.accounts.getById(accountId))?.historyId).toBe(String(gmail.historyId));
+      expect((await repos.syncState.get(accountId)).historyId).toBe(String(gmail.historyId));
       expect((await repos.syncState.get(accountId)).fullSync).toBeUndefined();
       expect(eventsOf('labels.changed')).toHaveLength(1);
       expect(eventsOf('message.added')).toEqual([]); // backfill is not new mail
@@ -176,7 +176,7 @@ describe.skipIf(!testDatabaseUrl)('sync', () => {
       expect(await labelsOf('m1')).toEqual(['STARRED']);
       expect(await labelsOf('m3')).toEqual(['INBOX', 'UNREAD']);
       expect(await repos.messages.getById(accountId, 'm2')).toBeUndefined();
-      expect((await repos.accounts.getById(accountId))?.historyId).toBe(String(gmail.historyId));
+      expect((await repos.syncState.get(accountId)).historyId).toBe(String(gmail.historyId));
       expect(eventsOf('message.added')).toEqual([{ accountId, messageIds: ['m3'] }]);
       expect(eventsOf('message.updated')).toEqual([{ accountId, messageIds: ['m1'] }]);
       expect(eventsOf('message.deleted')).toEqual([{ accountId, messageIds: ['m2'] }]);

@@ -13,7 +13,7 @@ import { EventBus } from '../../shared/events/event-bus.js';
 import type { GenerateRequest, Part } from '../../shared/llm/types.js';
 import { ActionLogger } from '../../shared/logging/action-logger.js';
 import { HybridSearch } from '../../mailbox/search/hybrid-search.js';
-import { MailSync } from '../sync/mail-sync.js';
+import { MailSync } from '../../sync/mail-sync.js';
 import { MailboxService } from '../../mailbox/mailbox.js';
 import { createEmailTools } from '../../mailbox/tools/email-tools.js';
 import { ToolRegistry } from '../../shared/tool-registry.js';

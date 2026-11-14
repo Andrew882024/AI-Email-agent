@@ -1,7 +1,7 @@
 import addressparser from 'addressparser';
 import type { gmail_v1 } from '@googleapis/gmail';
-import type { Attachment, EmailAddress, Label, MessageUpsert } from '../../shared/types.js';
-import type { GmailLabel, GmailMessage } from '../../shared/google/gateways.js';
+import type { Attachment, EmailAddress, Label, MessageUpsert } from '../types.js';
+import type { GmailLabel, GmailMessage } from './gateways.js';
 
 type Part = gmail_v1.Schema$MessagePart;
 

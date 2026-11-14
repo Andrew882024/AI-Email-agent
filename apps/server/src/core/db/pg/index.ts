@@ -8,7 +8,7 @@ import { PgMessageRepository } from '../../../mailbox/message-repository.js';
 import { PgOAuthTokenRepository } from '../../../auth/oauth-token-repository.js';
 import { PgOutboxRepository } from '../../../mailbox/outbox-repository.js';
 import { PgSessionRepository } from '../../../auth/session-repository.js';
-import { PgSyncStateRepository } from './sync-state-repository.js';
+import { PgSyncStateRepository } from '../../../sync/sync-state-repository.js';
 import { PgVectorStore } from '../../../mailbox/vector-store.js';
 import { PgWorkflowRepository } from './workflow-repository.js';
 import { PgTodoRepository } from '../../../mailbox/todo-repository.js';

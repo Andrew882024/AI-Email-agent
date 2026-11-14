@@ -19,6 +19,11 @@ export function migrateToLatest(db: Kysely<any>): Promise<MigrationResult[]> {
   return run(createMigrator(db).migrateToLatest());
 }
 
+/** Migrate up or down to exactly `name` (applied, later ones reverted). */
+export function migrateTo(db: Kysely<any>, name: string): Promise<MigrationResult[]> {
+  return run(createMigrator(db).migrateTo(name));
+}
+
 /** Revert the most recently applied migration. */
 export function migrateDown(db: Kysely<any>): Promise<MigrationResult[]> {
   return run(createMigrator(db).migrateDown());

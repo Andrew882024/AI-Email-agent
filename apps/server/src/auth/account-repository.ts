@@ -4,14 +4,12 @@ import type { Db } from '../shared/db/connection.js';
 import type { AccountRepository } from './repositories.js';
 import type { AccountsTable } from '../shared/db/schema.js';
 
-/** Everything but the OAuth token and sync checkpoint, which have their own repositories. */
+/** Everything but the OAuth token, which has its own repository. */
 const ACCOUNT_COLUMNS = [
   'id',
   'email',
   'google_sub',
   'display_name',
-  'history_id',
-  'last_full_sync_at',
   'created_at',
   'updated_at',
 ] as const;
@@ -24,8 +22,6 @@ function toAccount(row: AccountRow): Account {
     email: row.email,
     googleSub: row.google_sub,
     displayName: row.display_name ?? undefined,
-    historyId: row.history_id ?? undefined,
-    lastFullSyncAt: row.last_full_sync_at ?? undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -67,18 +63,6 @@ export class PgAccountRepository implements AccountRepository {
       .orderBy('created_at')
       .execute();
     return rows.map(toAccount);
-  }
-
-  async updateSyncState(id: string, state: { historyId?: string; lastFullSyncAt?: Date }) {
-    await this.db
-      .updateTable('accounts')
-      .set({
-        ...(state.historyId !== undefined && { history_id: state.historyId }),
-        ...(state.lastFullSyncAt !== undefined && { last_full_sync_at: state.lastFullSyncAt }),
-        updated_at: sql`now()`,
-      })
-      .where('id', '=', id)
-      .execute();
   }
 
   async delete(id: string) {

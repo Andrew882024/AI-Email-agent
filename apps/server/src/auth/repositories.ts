@@ -6,7 +6,6 @@ export interface AccountRepository {
   upsert(input: { email: string; googleSub: string; displayName?: string }): Promise<Account>;
   getById(id: string): Promise<Account | undefined>;
   list(): Promise<Account[]>;
-  updateSyncState(id: string, state: { historyId?: string; lastFullSyncAt?: Date }): Promise<void>;
   delete(id: string): Promise<void>;
 }
 

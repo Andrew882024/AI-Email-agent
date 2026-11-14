@@ -1,13 +1,13 @@
-import { ReauthRequiredError } from '../../auth/errors.js';
-import type { Repositories } from '../db/repositories.js';
-import type { OutboxOp } from '../../shared/types.js';
-import type { EventBus } from '../../shared/events/event-bus.js';
-import { isRetryableGoogleError } from '../../shared/google/errors.js';
-import type { GatewayProvider } from '../../shared/google/gateways.js';
-import type { ActionLogger } from '../../shared/logging/action-logger.js';
-import type { Logger } from '../../shared/logging/system-logger.js';
+import { ReauthRequiredError } from '../auth/errors.js';
+import type { Repositories } from '../core/db/repositories.js';
+import type { OutboxOp } from '../shared/types.js';
+import type { EventBus } from '../shared/events/event-bus.js';
+import { isRetryableGoogleError } from '../shared/google/errors.js';
+import type { GatewayProvider } from '../shared/google/gateways.js';
+import type { ActionLogger } from '../shared/logging/action-logger.js';
+import type { Logger } from '../shared/logging/system-logger.js';
 import type { MailSync } from './mail-sync.js';
-import type { OutboxOpName, OutboxPayloads } from '../../mailbox/outbox-ops.js';
+import type { OutboxOpName, OutboxPayloads } from '../mailbox/outbox-ops.js';
 
 export interface OutboxWorkerOptions {
   repos: Repositories;

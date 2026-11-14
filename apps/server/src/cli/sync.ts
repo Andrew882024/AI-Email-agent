@@ -64,8 +64,8 @@ async function main() {
       const counts = await repos.messages.countByLabel(account.id);
       const pending = await repos.outbox.listActive(account.id);
       console.log(`${account.email}`);
-      console.log(`  historyId:      ${account.historyId ?? '(full sync not finished)'}`);
-      console.log(`  last full sync: ${account.lastFullSyncAt?.toISOString() ?? '-'}`);
+      console.log(`  historyId:      ${state.historyId ?? '(full sync not finished)'}`);
+      console.log(`  last full sync: ${state.lastFullSyncAt?.toISOString() ?? '-'}`);
       if (state.fullSync) console.log(`  full sync in progress: ${state.fullSync.synced} synced`);
       for (const label of ['INBOX', 'UNREAD', 'STARRED', 'SENT']) {
         console.log(

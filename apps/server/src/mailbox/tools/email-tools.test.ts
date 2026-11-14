@@ -7,10 +7,10 @@ import { createPgRepositories } from '../../core/db/pg/index.js';
 import type { Repositories } from '../../core/db/repositories.js';
 import { EventBus } from '../../shared/events/event-bus.js';
 import { ActionLogger } from '../../shared/logging/action-logger.js';
-import { MailSync } from '../../core/sync/mail-sync.js';
+import { MailSync } from '../../sync/mail-sync.js';
 import { HybridSearch } from '../search/hybrid-search.js';
 import { MailboxService } from '../mailbox.js';
-import { OutboxWorker } from '../../core/sync/outbox-worker.js';
+import { OutboxWorker } from '../../sync/outbox-worker.js';
 import { createEmailTools } from './email-tools.js';
 import { type ToolContext, ToolError, ToolRegistry } from '../../shared/tool-registry.js';
 

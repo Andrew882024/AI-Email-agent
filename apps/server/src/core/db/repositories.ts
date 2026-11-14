@@ -5,8 +5,6 @@ import type {
   ActionStatus,
   Actor,
   Page,
-  FullSyncCheckpoint,
-  SyncState,
   ChatFile,
   ChatMessage,
   ChatSession,
@@ -35,6 +33,7 @@ import type {
   TodoRepository,
   VectorStore,
 } from '../../mailbox/repositories.js';
+import type { SyncStateRepository } from '../../sync/repositories.js';
 
 export interface NewActionLog {
   accountId?: string;
@@ -65,23 +64,6 @@ export interface ActionLogRepository {
   query(filter: ActionLogQuery): Promise<Page<ActionLogEntry>>;
   /** Forget an account's history (when the user deletes their account). */
   deleteForAccount(accountId: string): Promise<void>;
-}
-
-export interface SyncStateRepository {
-  get(accountId: string): Promise<SyncState>;
-  /**
-   * Start a full-sync checkpoint. startedAt comes from the database clock, the same clock that
-   * stamps messages.updated_at, so the end-of-sync sweep can't be fooled by host/DB clock skew.
-   */
-  beginFullSync(
-    accountId: string,
-    input: { historyId: string; windowStart?: Date },
-  ): Promise<FullSyncCheckpoint>;
-  /** `fullSync: null` clears the checkpoint (full sync finished). */
-  update(
-    accountId: string,
-    patch: { fullSync?: FullSyncCheckpoint | null; tasksSyncedAt?: Date },
-  ): Promise<void>;
 }
 
 export interface ChatRepository {

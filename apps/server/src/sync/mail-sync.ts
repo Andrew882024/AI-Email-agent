@@ -1,13 +1,13 @@
-import type { Repositories } from '../db/repositories.js';
-import type { FullSyncCheckpoint } from '../../shared/types.js';
-import type { EventBus } from '../../shared/events/event-bus.js';
-import { HistoryExpiredError } from '../../shared/google/errors.js';
-import type { GatewayProvider, GmailGateway } from '../../shared/google/gateways.js';
-import { mapLimit } from '../../shared/google/retry.js';
-import type { ActionLogger } from '../../shared/logging/action-logger.js';
-import type { Logger } from '../../shared/logging/system-logger.js';
-import type { OutboxPayloads } from '../../mailbox/outbox-ops.js';
-import { parseGmailLabel, parseGmailMessage } from './parse-message.js';
+import type { Repositories } from '../core/db/repositories.js';
+import type { FullSyncCheckpoint } from '../shared/types.js';
+import type { EventBus } from '../shared/events/event-bus.js';
+import { HistoryExpiredError } from '../shared/google/errors.js';
+import type { GatewayProvider, GmailGateway } from '../shared/google/gateways.js';
+import { mapLimit } from '../shared/google/retry.js';
+import type { ActionLogger } from '../shared/logging/action-logger.js';
+import type { Logger } from '../shared/logging/system-logger.js';
+import type { OutboxPayloads } from '../mailbox/outbox-ops.js';
+import { parseGmailLabel, parseGmailMessage } from '../shared/google/parse-message.js';
 
 export interface MailSyncOptions {
   repos: Repositories;
@@ -42,14 +42,12 @@ export class MailSync {
     const gmail = await this.options.gateways.gmail(accountId);
     await this.syncLabels(accountId, gmail);
 
-    const account = await repos.accounts.getById(accountId);
-    if (!account) throw new Error(`Unknown account ${accountId}`);
-    const { fullSync } = await repos.syncState.get(accountId);
+    const { fullSync, historyId } = await repos.syncState.get(accountId);
     if (fullSync) return this.runFullSync(accountId, gmail, fullSync);
-    if (!account.historyId)
+    if (!historyId)
       return this.runFullSync(accountId, gmail, await this.startFullSync(accountId, gmail));
     try {
-      return await this.incrementalSync(accountId, gmail, account.historyId);
+      return await this.incrementalSync(accountId, gmail, historyId);
     } catch (err) {
       if (!(err instanceof HistoryExpiredError)) throw err;
       this.options.logger.warn({ accountId }, 'Gmail history expired; running a full resync');
@@ -66,11 +64,11 @@ export class MailSync {
     const { repos } = this.options;
     const { fullSync } = await repos.syncState.get(accountId);
     if (!fullSync) return false;
-    await repos.accounts.updateSyncState(accountId, {
+    await repos.syncState.update(accountId, {
       historyId: fullSync.historyId,
       lastFullSyncAt: this.now(),
+      fullSync: null,
     });
-    await repos.syncState.update(accountId, { fullSync: null });
     await this.options.actions.log({
       accountId,
       actor: 'user',
@@ -140,11 +138,11 @@ export class MailSync {
       events.emit('sync.status', { accountId, phase: 'full_sync', synced: cp.synced });
     } while (cp.pageToken);
 
-    await repos.accounts.updateSyncState(accountId, {
+    await repos.syncState.update(accountId, {
       historyId: cp.historyId,
       lastFullSyncAt: this.now(),
+      fullSync: null,
     });
-    await repos.syncState.update(accountId, { fullSync: null });
     // Anything in the window that this pass didn't refresh no longer exists in Gmail.
     const deleted = await repos.messages.sweepStale(accountId, {
       updatedBefore: cp.startedAt,
@@ -211,7 +209,7 @@ export class MailSync {
     await repos.messages.deleteMany(accountId, [...deleted]);
     const updated = [...relabeled].filter((id) => !added.has(id));
     await this.reapplyPending(accountId, updated);
-    await repos.accounts.updateSyncState(accountId, { historyId: latest });
+    await repos.syncState.update(accountId, { historyId: latest });
 
     this.emitIfAny('message.added', accountId, stored);
     this.emitIfAny('message.updated', accountId, updated);

@@ -23,7 +23,7 @@ describe.skipIf(!testDatabaseUrl)('auth repositories', () => {
   });
 
   describe('accounts', () => {
-    it('upserts by googleSub and tracks sync state', async () => {
+    it('upserts by googleSub, lists and deletes', async () => {
       const again = await accounts.upsert({
         email: 'new@example.com',
         googleSub: 'sub-1',
@@ -31,13 +31,6 @@ describe.skipIf(!testDatabaseUrl)('auth repositories', () => {
       });
       expect(again).toMatchObject({ id: accountId, email: 'new@example.com', displayName: 'Me' });
 
-      await accounts.updateSyncState(accountId, { historyId: '12345' });
-      const synced = new Date('2026-02-01T00:00:00Z');
-      await accounts.updateSyncState(accountId, { lastFullSyncAt: synced });
-      expect(await accounts.getById(accountId)).toMatchObject({
-        historyId: '12345',
-        lastFullSyncAt: synced,
-      });
       expect(await accounts.list()).toHaveLength(1);
 
       await accounts.delete(accountId);

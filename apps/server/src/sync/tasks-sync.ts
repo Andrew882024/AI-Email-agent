@@ -1,6 +1,6 @@
-import type { Repositories } from '../db/repositories.js';
-import type { EventBus } from '../../shared/events/event-bus.js';
-import type { GatewayProvider } from '../../shared/google/gateways.js';
+import type { Repositories } from '../core/db/repositories.js';
+import type { EventBus } from '../shared/events/event-bus.js';
+import type { GatewayProvider } from '../shared/google/gateways.js';
 
 /** Overlap between polls so a task updated during the previous request isn't missed. */
 const SKEW_MS = 60_000;

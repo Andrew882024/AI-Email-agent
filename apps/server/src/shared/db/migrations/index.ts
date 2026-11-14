@@ -12,6 +12,7 @@ import { downMigration as down0010, upMigration as up0010 } from './0010_merge_a
 import { downMigration as down0011, upMigration as up0011 } from './0011_merge_message_parts.js';
 import { downMigration as down0012, upMigration as up0012 } from './0012_merge_tool_runs.js';
 import { downMigration as down0013, upMigration as up0013 } from './0013_restore_action_logs.js';
+import { downMigration as down0014, upMigration as up0014 } from './0014_split_sync_state.js';
 
 // Registered explicitly (not read from disk) so migrations work the same from src, dist and a
 // bundled build. Names sort lexically; never rename or reorder an applied migration.
@@ -29,4 +30,5 @@ export const migrations: Record<string, Migration> = {
   '0011_merge_message_parts': { up: up0011, down: down0011 },
   '0012_merge_tool_runs': { up: up0012, down: down0012 },
   '0013_restore_action_logs': { up: up0013, down: down0013 },
+  '0014_split_sync_state': { up: up0014, down: down0014 },
 };

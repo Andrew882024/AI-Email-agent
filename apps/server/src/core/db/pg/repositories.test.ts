@@ -26,38 +26,6 @@ describe.skipIf(!testDatabaseUrl)('Postgres repositories', () => {
     accountId = (await repos.accounts.upsert({ email: 'me@example.com', googleSub: 'sub-1' })).id;
   });
 
-  describe('sync state', () => {
-    it('stores, clears the full-sync checkpoint and keeps the tasks cursor', async () => {
-      expect(await repos.syncState.get(accountId)).toEqual({ accountId, tasksSyncedAt: undefined });
-      const checkpoint = {
-        startedAt: new Date('2026-01-01T00:00:00Z'),
-        historyId: '100',
-        pageToken: 'p2',
-        windowStart: new Date('2025-01-01T00:00:00Z'),
-        synced: 500,
-      };
-      await repos.syncState.update(accountId, { fullSync: checkpoint });
-      const tasksAt = new Date('2026-01-02T00:00:00Z');
-      await repos.syncState.update(accountId, { tasksSyncedAt: tasksAt });
-      expect(await repos.syncState.get(accountId)).toEqual({
-        accountId,
-        fullSync: checkpoint,
-        tasksSyncedAt: tasksAt,
-      });
-      await repos.syncState.update(accountId, { fullSync: null });
-      expect(await repos.syncState.get(accountId)).toEqual({ accountId, tasksSyncedAt: tasksAt });
-
-      const begun = await repos.syncState.beginFullSync(accountId, { historyId: '200' });
-      const { rows } = await sql<{ now: Date }>`select now() as now`.execute(t.db);
-      expect(begun.startedAt.getTime()).toBeLessThanOrEqual(rows[0]!.now.getTime());
-      expect(await repos.syncState.get(accountId)).toEqual({
-        accountId,
-        fullSync: { startedAt: begun.startedAt, historyId: '200', synced: 0 },
-        tasksSyncedAt: tasksAt,
-      });
-    });
-  });
-
   describe('chat tool runs', () => {
     it('stores runs on the message, finds them by id and resolves them concurrently', async () => {
       const session = await repos.chats.createSession(accountId);
