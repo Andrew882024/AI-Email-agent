@@ -6,7 +6,7 @@ import { AesGcmSecretCipher } from '../auth/secret-cipher.js';
 import { EncryptedTokenStore } from '../auth/token-store.js';
 import { loadConfig } from '../shared/config/env.js';
 import { createDb } from '../shared/db/connection.js';
-import { createPgRepositories } from '../core/db/pg/index.js';
+import { createPgRepositories } from '../repositories.js';
 import { EventBus } from '../shared/events/event-bus.js';
 import { GoogleGatewayProvider } from '../shared/google/gateways.js';
 import { ActionLogger } from '../shared/logging/action-logger.js';

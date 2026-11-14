@@ -1,5 +1,5 @@
+import type { MailboxRepos } from './repositories.js';
 import { NotFoundError } from '../shared/errors.js';
-import type { Repositories } from '../core/db/repositories.js';
 import type { Todo } from '../shared/types.js';
 import type { EventBus } from '../shared/events/event-bus.js';
 import type { OutboxOpName, OutboxPayloads } from './outbox-ops.js';
@@ -14,7 +14,7 @@ export const gmailLink = (accountEmail: string, messageId: string) =>
  */
 export class MailboxService {
   constructor(
-    private readonly repos: Repositories,
+    private readonly repos: MailboxRepos,
     private readonly events: EventBus,
   ) {}
 

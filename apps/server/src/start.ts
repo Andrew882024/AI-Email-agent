@@ -1,4 +1,6 @@
-import { type AppConfig, checkDatabase, migrateToLatest } from './core/index.js';
+import { type AppConfig } from './shared/config/env.js';
+import { checkDatabase } from './shared/db/health.js';
+import { migrateToLatest } from './shared/db/migrator.js';
 import { buildServer } from './server.js';
 import { createServices } from './services.js';
 

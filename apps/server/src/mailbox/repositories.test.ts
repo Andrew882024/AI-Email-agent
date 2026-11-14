@@ -2,8 +2,8 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { sql } from 'kysely';
 import { createTestDatabase, type TestDatabase, testDatabaseUrl } from '../shared/testing/db.js';
 import type { MessageUpsert } from '../shared/types.js';
-import type { Repositories } from '../core/db/repositories.js';
-import { createPgRepositories } from '../core/db/pg/index.js';
+import type { Repositories } from '../repositories.js';
+import { createPgRepositories } from '../repositories.js';
 import { EMBEDDING_DIMENSIONS } from '../shared/db/schema.js';
 
 function message(id: string, overrides: Partial<MessageUpsert> = {}): MessageUpsert {

@@ -1,5 +1,5 @@
 // Server entry point: `pnpm server`.
-import { ConfigError, loadConfig } from './core/index.js';
+import { ConfigError, loadConfig } from './shared/config/env.js';
 import { StartupError, startServer } from './start.js';
 
 try {

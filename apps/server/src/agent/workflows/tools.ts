@@ -1,5 +1,5 @@
+import type { AgentRepos } from '../repositories.js';
 import { z } from 'zod';
-import type { Repositories } from '../../core/db/repositories.js';
 import { defineTool, type ToolContext } from '../../shared/tool-registry.js';
 import { DOCUMENT_NAMES, type WorkflowEngine } from './engine.js';
 
@@ -9,7 +9,7 @@ const workflowId = z.string().min(1);
 const sessionOf = (ctx: ToolContext) =>
   ctx.actor.startsWith('agent:') ? ctx.actor.slice('agent:'.length) : undefined;
 
-export function createWorkflowTools(engine: WorkflowEngine, repos: Repositories) {
+export function createWorkflowTools(engine: WorkflowEngine, repos: AgentRepos) {
   return [
     defineTool({
       name: 'create_workflow',

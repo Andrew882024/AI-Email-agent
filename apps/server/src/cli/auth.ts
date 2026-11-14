@@ -4,7 +4,7 @@ import { AUTH_CALLBACK_PATH, GoogleOAuthService } from '../auth/google-auth.js';
 import { EncryptedTokenStore } from '../auth/token-store.js';
 import { loadConfig } from '../shared/config/env.js';
 import { createDb } from '../shared/db/connection.js';
-import { createPgRepositories } from '../core/db/pg/index.js';
+import { createPgRepositories } from '../repositories.js';
 
 const command = process.argv[2] ?? 'status';
 if (!['status', 'logout'].includes(command)) {

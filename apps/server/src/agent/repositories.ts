@@ -16,6 +16,8 @@ import type {
   WorkflowStatus,
   WorkflowType,
 } from '../shared/types.js';
+import type { AccountRepository } from '../auth/repositories.js';
+import type { LabelRepository, MessageRepository, VectorStore } from '../mailbox/repositories.js';
 
 export interface ChatRepository {
   createSession(accountId: string, title?: string): Promise<ChatSession>;
@@ -138,4 +140,19 @@ export interface WorkflowRepository {
   ): Promise<void>;
   /** Decision counts by status. */
   counts(workflowId: string): Promise<Partial<Record<DecisionStatus, number>>>;
+}
+
+/**
+ * What agent code may use: its own tables, account lookups, and read-only access to mail. Changes
+ * to mail go through MailboxService and the tools, never these repositories.
+ */
+export interface AgentRepos {
+  accounts: Pick<AccountRepository, 'getById'>;
+  chats: ChatRepository;
+  memory: MemoryRepository;
+  chatFiles: ChatFileRepository;
+  workflows: WorkflowRepository;
+  messages: Pick<MessageRepository, 'getById' | 'getByIds' | 'list' | 'keywordSearch'>;
+  labels: Pick<LabelRepository, 'findByName'>;
+  vectors: Pick<VectorStore, 'search'>;
 }

@@ -1,5 +1,5 @@
+import type { AgentRepos } from './repositories.js';
 import { z } from 'zod';
-import type { Repositories } from '../core/db/repositories.js';
 import type {
   Account,
   ChatMessage,
@@ -148,7 +148,7 @@ const textOf = (parts: StoredPart[]) =>
 const size = (m: ChatMessage) => JSON.stringify(m.parts).length;
 
 export interface ChatAgentOptions {
-  repos: Repositories;
+  repos: AgentRepos;
   llm: LLMProvider;
   tools: ToolRegistry;
   files: ChatFileStore;

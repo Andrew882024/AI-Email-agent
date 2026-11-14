@@ -2,25 +2,19 @@ import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import {
   createMailboxMirror,
-  ActionLogger,
-  AesGcmSecretCipher,
-  ChatAgent,
-  ChatFileStore,
-  MemoryService,
-  type Account,
-  AuthFlowError,
   createEmailTools,
-  createPgRepositories,
-  EventBus,
   HybridSearch,
-  type GoogleAuthProvider,
   MailboxService,
-  MailSync,
-  OutboxWorker,
-  ReauthRequiredError,
-  type Repositories,
-  ToolRegistry,
-} from './core/index.js';
+} from './mailbox/index.js';
+import { ActionLogger } from './shared/logging/action-logger.js';
+import { AesGcmSecretCipher, AuthFlowError, type GoogleAuthProvider } from './auth/index.js';
+import { ChatAgent, ChatFileStore, MemoryService } from './agent/index.js';
+import { type Account } from './shared/types.js';
+import { createPgRepositories, type Repositories } from './repositories.js';
+import { EventBus } from './shared/events/event-bus.js';
+import { MailSync, OutboxWorker } from './sync/index.js';
+import { ReauthRequiredError } from './shared/google/errors.js';
+import { ToolRegistry } from './shared/tool-registry.js';
 import type { FastifyInstance } from 'fastify';
 import { sql } from 'kysely';
 import { pino } from 'pino';

@@ -2,40 +2,36 @@
 import { join } from 'node:path';
 import {
   createMailboxMirror,
-  ActionLogger,
+  createEmailTools,
+  EmailIndexer,
+  HybridSearch,
+  MailboxService,
+} from './mailbox/index.js';
+import { ActionLogger } from './shared/logging/action-logger.js';
+import {
   ChatAgent,
   ChatFileStore,
   createWorkflowTools,
   WorkflowEngine,
   GoogleDriveDocumentSink,
-  GeminiProvider,
   MemoryService,
+} from './agent/index.js';
+import { GeminiProvider, GeminiEmbeddings } from './shared/llm/gemini.js';
+import {
   AesGcmSecretCipher,
   AUTH_CALLBACK_PATH,
-  type AppConfig,
-  type Db,
-  type Logger,
-  type Repositories,
   type SecretCipher,
-  ConfigError,
-  createDb,
-  createEmailTools,
-  createPgRepositories,
-  EmailIndexer,
-  GeminiEmbeddings,
-  HybridSearch,
-  createSystemLogger,
   EncryptedTokenStore,
-  EventBus,
-  GoogleGatewayProvider,
   GoogleOAuthService,
-  MailboxService,
-  MailSync,
-  OutboxWorker,
-  SyncScheduler,
-  TasksSync,
-  ToolRegistry,
-} from './core/index.js';
+} from './auth/index.js';
+import { type AppConfig, ConfigError } from './shared/config/env.js';
+import { type Db, createDb } from './shared/db/connection.js';
+import { type Logger, createSystemLogger } from './shared/logging/system-logger.js';
+import { type Repositories, createPgRepositories } from './repositories.js';
+import { EventBus } from './shared/events/event-bus.js';
+import { GoogleGatewayProvider } from './shared/google/gateways.js';
+import { MailSync, OutboxWorker, SyncScheduler, TasksSync } from './sync/index.js';
+import { ToolRegistry } from './shared/tool-registry.js';
 import { EMBEDDING_DIMENSIONS } from './shared/db/schema.js';
 
 export interface Services {

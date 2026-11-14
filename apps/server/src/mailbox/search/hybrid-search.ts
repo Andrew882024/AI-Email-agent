@@ -1,5 +1,4 @@
-import type { Repositories } from '../../core/db/repositories.js';
-import type { MessageFilter, SearchHit } from '../repositories.js';
+import type { MessageFilter, SearchHit, MailboxRepos } from '../repositories.js';
 import type { MessageSummary } from '../../shared/types.js';
 import type { EmbeddingProvider } from '../../shared/llm/types.js';
 import type { Logger } from '../../shared/logging/system-logger.js';
@@ -33,7 +32,7 @@ const RRF_K = 60;
 export class HybridSearch {
   constructor(
     private readonly options: {
-      repos: Repositories;
+      repos: MailboxRepos;
       embeddings?: EmbeddingProvider;
       logger?: Logger;
     },

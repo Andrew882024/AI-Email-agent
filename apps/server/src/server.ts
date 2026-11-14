@@ -1,22 +1,14 @@
 import cookie from '@fastify/cookie';
 import cors from '@fastify/cors';
 import fastifyStatic from '@fastify/static';
-import {
-  type ChatAgent,
-  type ChatFileStore,
-  type MemoryService,
-  type Actor,
-  type AppEventName,
-  type EventBus,
-  type GoogleAuthProvider,
-  type Logger,
-  type Repositories,
-  type SecretCipher,
-  type SyncScheduler,
-  ToolError,
-  type ToolErrorCode,
-  type ToolRegistry,
-} from './core/index.js';
+import { type ChatAgent, type ChatFileStore, type MemoryService } from './agent/index.js';
+import { type Actor } from './shared/types.js';
+import { type AppEventName, type EventBus } from './shared/events/event-bus.js';
+import { type GoogleAuthProvider, type SecretCipher } from './auth/index.js';
+import { type Logger } from './shared/logging/system-logger.js';
+import { type Repositories } from './repositories.js';
+import { type SyncScheduler } from './sync/index.js';
+import { ToolError, type ToolErrorCode, type ToolRegistry } from './shared/tool-registry.js';
 import Fastify, {
   type FastifyBaseLogger,
   type FastifyInstance,

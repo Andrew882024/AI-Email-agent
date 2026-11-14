@@ -10,6 +10,7 @@ import type {
   Todo,
   TodoStatus,
 } from '../shared/types.js';
+import type { AccountRepository } from '../auth/repositories.js';
 
 export interface LabelRepository {
   list(accountId: string): Promise<Label[]>;
@@ -171,4 +172,14 @@ export interface OutboxRepository {
   markFailed(id: string, error: string): Promise<void>;
   /** Return ops stuck in_progress (e.g. after a crash) to pending. Returns how many. */
   requeueInProgress(): Promise<number>;
+}
+
+/** What mailbox code may use: its own tables, plus account lookups from the auth module. */
+export interface MailboxRepos {
+  accounts: Pick<AccountRepository, 'getById'>;
+  messages: MessageRepository;
+  labels: LabelRepository;
+  todos: TodoRepository;
+  outbox: OutboxRepository;
+  vectors: VectorStore;
 }

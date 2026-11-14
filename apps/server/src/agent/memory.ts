@@ -1,5 +1,5 @@
+import type { AgentRepos } from './repositories.js';
 import { z } from 'zod';
-import type { Repositories } from '../core/db/repositories.js';
 import type { MemoryCategory, MemoryItem } from '../shared/types.js';
 import { generateObject } from '../shared/llm/structured.js';
 import type { EmbeddingProvider, LLMProvider } from '../shared/llm/types.js';
@@ -51,7 +51,7 @@ export interface MemoryChange {
 }
 
 export interface MemoryServiceOptions {
-  repos: Repositories;
+  repos: AgentRepos;
   llm: LLMProvider;
   embeddings?: EmbeddingProvider;
   actions: ActionLogger;

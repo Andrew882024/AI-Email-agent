@@ -1,5 +1,5 @@
+import type { MailboxRepos } from '../repositories.js';
 import { z } from 'zod';
-import type { Repositories } from '../../core/db/repositories.js';
 import { type Label, type Message, SystemLabel } from '../../shared/types.js';
 import type { EventBus } from '../../shared/events/event-bus.js';
 import type { GatewayProvider } from '../../shared/google/gateways.js';
@@ -24,7 +24,7 @@ import {
 import { defineTool, type ToolContext, ToolError } from '../../shared/tool-registry.js';
 
 export interface EmailToolDeps {
-  repos: Repositories;
+  repos: MailboxRepos;
   mailbox: MailboxService;
   gateways: GatewayProvider;
   events: EventBus;
