@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { type Selectable, sql } from 'kysely';
 import type {
   ChatFile,
@@ -16,7 +17,7 @@ import type {
   ChatMessagesTable,
   ChatSessionsTable,
   MemoryItemsTable,
-  ToolRunsTable,
+  StoredToolRun,
 } from '../schema.js';
 import { clamp } from './util.js';
 
@@ -34,7 +35,12 @@ function toSession(row: Selectable<ChatSessionsTable>): ChatSession {
   };
 }
 
-function toMessage(row: Selectable<ChatMessagesTable>): ChatMessage {
+/** chat_messages columns that make a ChatMessage (tool_runs is read separately). */
+const MESSAGE_COLUMNS = ['id', 'session_id', 'role', 'parts', 'created_at'] as const;
+
+function toMessage(
+  row: Pick<Selectable<ChatMessagesTable>, (typeof MESSAGE_COLUMNS)[number]>,
+): ChatMessage {
   return {
     id: row.id,
     sessionId: row.session_id,
@@ -44,21 +50,24 @@ function toMessage(row: Selectable<ChatMessagesTable>): ChatMessage {
   };
 }
 
-function toRun(row: Selectable<ToolRunsTable>): ToolRun {
+function toRun(sessionId: string, messageId: string, run: StoredToolRun): ToolRun {
   return {
-    id: row.id,
-    sessionId: row.session_id,
-    messageId: row.message_id,
-    position: row.position,
-    callId: row.call_id ?? undefined,
-    tool: row.tool,
-    input: row.input,
-    status: row.status,
-    result: row.result ?? undefined,
-    createdAt: row.created_at,
-    resolvedAt: row.resolved_at ?? undefined,
+    id: run.id,
+    sessionId,
+    messageId,
+    position: run.position,
+    callId: run.callId,
+    tool: run.tool,
+    input: run.input,
+    status: run.status,
+    result: run.result ?? undefined,
+    createdAt: new Date(run.createdAt),
+    resolvedAt: run.resolvedAt ? new Date(run.resolvedAt) : undefined,
   };
 }
+
+/** `chat_messages m` holds tool run `id` (GIN-indexed containment). */
+const holdsRun = (id: string) => sql<boolean>`m.tool_runs @> ${JSON.stringify([{ id }])}::jsonb`;
 
 export class PgChatRepository implements ChatRepository {
   constructor(private readonly db: Db) {}
@@ -118,7 +127,7 @@ export class PgChatRepository implements ChatRepository {
       const row = await trx
         .insertInto('chat_messages')
         .values({ session_id: sessionId, role, parts: JSON.stringify(parts) })
-        .returningAll()
+        .returning(MESSAGE_COLUMNS)
         .executeTakeFirstOrThrow();
       await trx
         .updateTable('chat_sessions')
@@ -130,7 +139,10 @@ export class PgChatRepository implements ChatRepository {
   }
 
   async listMessages(sessionId: string, options: { afterId?: string } = {}) {
-    let q = this.db.selectFrom('chat_messages').selectAll().where('session_id', '=', sessionId);
+    let q = this.db
+      .selectFrom('chat_messages')
+      .select(MESSAGE_COLUMNS)
+      .where('session_id', '=', sessionId);
     if (options.afterId) q = q.where('id', '>', options.afterId);
     return (await q.orderBy('id').execute()).map(toMessage);
   }
@@ -148,70 +160,89 @@ export class PgChatRepository implements ChatRepository {
     }[],
   ) {
     if (runs.length === 0) return [];
-    const rows = await this.db
-      .insertInto('tool_runs')
-      .values(
-        runs.map((r) => ({
-          session_id: sessionId,
-          message_id: messageId,
-          position: r.position,
-          call_id: r.callId ?? null,
-          tool: r.tool,
-          input: JSON.stringify(r.input),
-          status: r.status,
-          result: r.result === undefined ? null : JSON.stringify(r.result),
-          resolved_at: r.status === 'awaiting_approval' ? null : new Date(),
-        })),
-      )
-      .returningAll()
-      .execute();
-    return rows.map(toRun).sort((a, b) => a.position - b.position);
+    const createdAt = new Date().toISOString();
+    const stored: StoredToolRun[] = runs
+      .map((r) => ({
+        id: randomUUID(),
+        position: r.position,
+        ...(r.callId !== undefined && { callId: r.callId }),
+        tool: r.tool,
+        input: r.input,
+        status: r.status,
+        ...(r.result !== undefined && { result: r.result }),
+        createdAt,
+        ...(r.status !== 'awaiting_approval' && { resolvedAt: createdAt }),
+      }))
+      .sort((a, b) => a.position - b.position);
+    const updated = await this.db
+      .updateTable('chat_messages')
+      .set({ tool_runs: sql`tool_runs || ${JSON.stringify(stored)}::jsonb` })
+      .where('id', '=', messageId)
+      .where('session_id', '=', sessionId)
+      .returning('id')
+      .executeTakeFirst();
+    if (!updated) throw new Error(`Chat message ${messageId} not found in session ${sessionId}`);
+    return stored.map((r) => toRun(sessionId, messageId, r));
   }
 
   async getToolRun(id: string) {
     const row = await this.db
-      .selectFrom('tool_runs')
-      .selectAll()
-      .where('id', '=', id)
+      .selectFrom('chat_messages as m')
+      .select(['m.id', 'm.session_id', 'm.tool_runs'])
+      .where(holdsRun(id))
       .executeTakeFirst();
-    return row && toRun(row);
+    const run = row?.tool_runs.find((r) => r.id === id);
+    return row && run && toRun(row.session_id, row.id, run);
   }
 
   async listToolRuns(messageId: string) {
-    const rows = await this.db
-      .selectFrom('tool_runs')
-      .selectAll()
-      .where('message_id', '=', messageId)
-      .orderBy('position')
-      .execute();
-    return rows.map(toRun);
+    const row = await this.db
+      .selectFrom('chat_messages')
+      .select(['id', 'session_id', 'tool_runs'])
+      .where('id', '=', messageId)
+      .executeTakeFirst();
+    if (!row) return [];
+    return row.tool_runs
+      .map((r) => toRun(row.session_id, row.id, r))
+      .sort((a, b) => a.position - b.position);
   }
 
   async resolveToolRun(
     id: string,
     outcome: { status: Exclude<ToolRunStatus, 'awaiting_approval'>; result: unknown },
   ) {
+    // One statement, so concurrent resolutions of runs in the same message can't lose each other.
+    const patch = JSON.stringify({ status: outcome.status, result: outcome.result ?? null });
     await this.db
-      .updateTable('tool_runs')
+      .updateTable('chat_messages as m')
       .set({
-        status: outcome.status,
-        result: JSON.stringify(outcome.result ?? null),
-        resolved_at: sql`now()`,
+        tool_runs: sql`(
+          select jsonb_agg(
+            case when r ->> 'id' = ${id}
+              then r || ${patch}::jsonb || jsonb_build_object('resolvedAt', now())
+              else r end
+            order by n)
+          from jsonb_array_elements(m.tool_runs) with ordinality as e (r, n)
+        )`,
       })
-      .where('id', '=', id)
+      .where(holdsRun(id))
       .execute();
   }
 
   async awaitingToolRuns(sessionId: string) {
     const rows = await this.db
-      .selectFrom('tool_runs')
-      .selectAll()
-      .where('session_id', '=', sessionId)
-      .where('status', '=', 'awaiting_approval')
-      .orderBy('created_at')
-      .orderBy('position')
+      .selectFrom('chat_messages as m')
+      .select(['m.id', 'm.session_id', 'm.tool_runs'])
+      .where('m.session_id', '=', sessionId)
+      .where(sql<boolean>`m.tool_runs @> '[{"status": "awaiting_approval"}]'::jsonb`)
+      .orderBy('m.id')
       .execute();
-    return rows.map(toRun);
+    return rows.flatMap((row) =>
+      row.tool_runs
+        .filter((r) => r.status === 'awaiting_approval')
+        .sort((a, b) => a.position - b.position)
+        .map((r) => toRun(row.session_id, row.id, r)),
+    );
   }
 }
 

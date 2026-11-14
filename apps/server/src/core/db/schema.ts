@@ -123,21 +123,23 @@ export interface ChatMessagesTable {
   session_id: string;
   role: 'user' | 'model';
   parts: Json<StoredPart[]>;
+  /** Tool calls made by this (model) message, ordered by position. */
+  tool_runs: ColumnType<StoredToolRun[], string | undefined, string>;
   created_at: Generated<Date>;
 }
 
-export interface ToolRunsTable {
-  id: Generated<string>;
-  session_id: string;
-  message_id: string;
+/** One element of chat_messages.tool_runs. */
+export interface StoredToolRun {
+  id: string;
   position: number;
-  call_id: string | null;
+  callId?: string;
   tool: string;
-  input: Json<Record<string, unknown>>;
+  input: Record<string, unknown>;
   status: 'awaiting_approval' | 'done' | 'error' | 'rejected';
-  result: Json<unknown> | null;
-  created_at: Generated<Date>;
-  resolved_at: Date | null;
+  result?: unknown;
+  /** ISO timestamps. */
+  createdAt: string;
+  resolvedAt?: string;
 }
 
 export interface MemoryItemsTable {
@@ -205,7 +207,6 @@ export interface Database {
   outbox_ops: OutboxOpsTable;
   chat_sessions: ChatSessionsTable;
   chat_messages: ChatMessagesTable;
-  tool_runs: ToolRunsTable;
   memory_items: MemoryItemsTable;
   chat_files: ChatFilesTable;
   workflows: WorkflowsTable;

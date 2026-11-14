@@ -635,4 +635,55 @@ describe.skipIf(!testDatabaseUrl)('Postgres repositories', () => {
       });
     });
   });
+
+  describe('chat tool runs', () => {
+    it('stores runs on the message, finds them by id and resolves them concurrently', async () => {
+      const session = await repos.chats.createSession(accountId);
+      const message = await repos.chats.appendMessage(session.id, 'model', []);
+      const runs = await repos.chats.createToolRuns(session.id, message.id, [
+        {
+          position: 1,
+          tool: 'archive',
+          input: { messageIds: ['m2'] },
+          status: 'awaiting_approval',
+        },
+        {
+          position: 0,
+          callId: 'c1',
+          tool: 'star',
+          input: { messageIds: ['m1'] },
+          status: 'awaiting_approval',
+        },
+        { position: 2, tool: 'list_labels', input: {}, status: 'done', result: { labels: [] } },
+      ]);
+      expect(runs.map((r) => [r.position, r.tool, r.messageId, r.sessionId])).toEqual([
+        [0, 'star', message.id, session.id],
+        [1, 'archive', message.id, session.id],
+        [2, 'list_labels', message.id, session.id],
+      ]);
+      expect(runs[2]?.resolvedAt).toBeInstanceOf(Date);
+      const [star, archive] = runs;
+      expect(await repos.chats.getToolRun(star!.id)).toEqual(star);
+      expect((await repos.chats.awaitingToolRuns(session.id)).map((r) => r.tool)).toEqual([
+        'star',
+        'archive',
+      ]);
+      // Messages keep their parts only; runs don't leak into the conversation.
+      expect((await repos.chats.listMessages(session.id))[0]).not.toHaveProperty('toolRuns');
+
+      await Promise.all([
+        repos.chats.resolveToolRun(star!.id, { status: 'done', result: { updated: 1 } }),
+        repos.chats.resolveToolRun(archive!.id, { status: 'rejected', result: null }),
+      ]);
+      const resolved = await repos.chats.listToolRuns(message.id);
+      expect(resolved.map((r) => [r.tool, r.status, r.result])).toEqual([
+        ['star', 'done', { updated: 1 }],
+        ['archive', 'rejected', undefined],
+        ['list_labels', 'done', { labels: [] }],
+      ]);
+      expect(resolved[0]?.resolvedAt).toBeInstanceOf(Date);
+      expect(await repos.chats.awaitingToolRuns(session.id)).toEqual([]);
+      expect(await repos.chats.getToolRun('00000000-0000-0000-0000-000000000000')).toBeUndefined();
+    });
+  });
 });

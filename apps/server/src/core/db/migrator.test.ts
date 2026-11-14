@@ -40,6 +40,7 @@ const HISTORY: { name: string; adds?: string[]; drops?: string[] }[] = [
     name: '0011_merge_message_parts',
     drops: ['message_labels', 'attachments', 'email_embeddings'],
   },
+  { name: '0012_merge_tool_runs', drops: ['tool_runs'] },
 ];
 
 /** The app tables after the first `count` migrations, sorted. */
@@ -236,6 +237,78 @@ describe.skipIf(!testDatabaseUrl)('migrator', () => {
       select message_id, model, content_hash from email_embeddings`.execute(t.db);
     expect(embeddings.rows).toEqual([
       { message_id: 'm1', model: 'model-a', content_hash: 'hash-1' },
+    ]);
+
+    await migrateToLatest(t.db);
+    await migrateReset(t.db);
+  });
+
+  it('moves tool runs onto their chat message and back, keeping ids (0012)', async () => {
+    await migrateToLatest(t.db);
+    await revertThrough('0012_merge_tool_runs');
+    const account = '00000000-0000-0000-0000-000000000001';
+    const session = '00000000-0000-0000-0000-0000000000a1';
+    const run1 = '00000000-0000-0000-0000-0000000000b1';
+    const run2 = '00000000-0000-0000-0000-0000000000b2';
+    await sql`insert into accounts (id, email, google_sub)
+      values (${account}, 'a@example.com', 'a')`.execute(t.db);
+    await sql`insert into chat_sessions (id, account_id) values (${session}, ${account})`.execute(
+      t.db,
+    );
+    const { rows: messages } = await sql<{ id: string }>`
+      insert into chat_messages (session_id, role, parts) values
+        (${session}, 'model', '[]'), (${session}, 'user', '[]')
+      returning id`.execute(t.db);
+    const modelMessage = messages[0]!.id;
+    await sql`insert into tool_runs (id, session_id, message_id, position, call_id, tool, input,
+        status, result, resolved_at) values
+      (${run2}, ${session}, ${modelMessage}, 1, null, 'archive', '{"messageIds":["m2"]}',
+        'awaiting_approval', '{"description":"Archive 1 email"}', null),
+      (${run1}, ${session}, ${modelMessage}, 0, 'c1', 'star', '{"messageIds":["m1"]}',
+        'done', '{"updated":1}', now())`.execute(t.db);
+
+    await migrateToLatest(t.db);
+    const { rows } = await sql<{ id: string; tool_runs: Record<string, unknown>[] }>`
+      select id, tool_runs from chat_messages order by id`.execute(t.db);
+    expect(rows.map((r) => r.tool_runs.map((run) => [run.id, run.position]))).toEqual([
+      [
+        [run1, 0],
+        [run2, 1],
+      ],
+      [],
+    ]);
+    expect(rows[0]?.tool_runs[0]).toMatchObject({
+      callId: 'c1',
+      tool: 'star',
+      input: { messageIds: ['m1'] },
+      status: 'done',
+      result: { updated: 1 },
+      resolvedAt: expect.any(String),
+    });
+    expect(rows[0]?.tool_runs[1]).not.toHaveProperty('callId');
+    expect(rows[0]?.tool_runs[1]).not.toHaveProperty('resolvedAt');
+
+    await revertThrough('0012_merge_tool_runs');
+    const back = await sql<Record<string, unknown>>`
+      select id, message_id, position, call_id, status, result from tool_runs
+      order by position`.execute(t.db);
+    expect(back.rows).toEqual([
+      {
+        id: run1,
+        message_id: modelMessage,
+        position: 0,
+        call_id: 'c1',
+        status: 'done',
+        result: { updated: 1 },
+      },
+      {
+        id: run2,
+        message_id: modelMessage,
+        position: 1,
+        call_id: null,
+        status: 'awaiting_approval',
+        result: { description: 'Archive 1 email' },
+      },
     ]);
 
     await migrateToLatest(t.db);
