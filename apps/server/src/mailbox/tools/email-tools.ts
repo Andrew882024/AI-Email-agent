@@ -1,11 +1,15 @@
 import { z } from 'zod';
-import type { Repositories } from '../db/repositories.js';
+import type { Repositories } from '../../core/db/repositories.js';
 import { type Label, type Message, SystemLabel } from '../../shared/types.js';
 import type { EventBus } from '../../shared/events/event-bus.js';
 import type { GatewayProvider } from '../../shared/google/gateways.js';
-import type { HybridSearch } from '../rag/hybrid-search.js';
-import { NotFoundError, type MailboxService } from '../sync/mailbox.js';
-import { parseAddresses, parseGmailLabel, parseGmailMessage } from '../sync/parse-message.js';
+import type { HybridSearch } from '../search/hybrid-search.js';
+import { NotFoundError, type MailboxService } from '../mailbox.js';
+import {
+  parseAddresses,
+  parseGmailLabel,
+  parseGmailMessage,
+} from '../../core/sync/parse-message.js';
 import {
   buildMime,
   forwardBody,
@@ -16,7 +20,7 @@ import {
   replyReferences,
   replySubject,
 } from './compose.js';
-import { defineTool, type ToolContext, ToolError } from './registry.js';
+import { defineTool, type ToolContext, ToolError } from '../../shared/tool-registry.js';
 
 export interface EmailToolDeps {
   repos: Repositories;

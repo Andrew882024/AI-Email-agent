@@ -12,16 +12,16 @@ import {
   type MessageUpsert,
   SystemLabel,
   type ThreadSummary,
-} from '../../../shared/types.js';
-import type { Db } from '../../../shared/db/connection.js';
+} from '../shared/types.js';
+import type { Db } from '../shared/db/connection.js';
 import type {
   LabelCounts,
   MessageFilter,
   MessageListQuery,
   MessageRepository,
-} from '../repositories.js';
-import type { Database, MessagesTable } from '../../../shared/db/schema.js';
-import { chunk, clamp, decodeCursor, encodeCursor, escapeLike } from '../../../shared/db/util.js';
+} from './repositories.js';
+import type { Database, MessagesTable } from '../shared/db/schema.js';
+import { chunk, clamp, decodeCursor, encodeCursor, escapeLike } from '../shared/db/util.js';
 
 const SUMMARY_COLUMNS = [
   'm.id',

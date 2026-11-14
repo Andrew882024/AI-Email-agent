@@ -1,4 +1,5 @@
-import type { MessageFilter, Repositories, SearchHit } from '../db/repositories.js';
+import type { Repositories } from '../../core/db/repositories.js';
+import type { MessageFilter, SearchHit } from '../repositories.js';
 import type { MessageSummary } from '../../shared/types.js';
 import type { EmbeddingProvider } from '../../shared/llm/types.js';
 import type { Logger } from '../../shared/logging/system-logger.js';

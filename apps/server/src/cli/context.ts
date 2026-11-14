@@ -11,7 +11,7 @@ import { GoogleGatewayProvider } from '../shared/google/gateways.js';
 import { ActionLogger } from '../shared/logging/action-logger.js';
 import { createSystemLogger } from '../shared/logging/system-logger.js';
 import { MailSync } from '../core/sync/mail-sync.js';
-import { MailboxService } from '../core/sync/mailbox.js';
+import { MailboxService } from '../mailbox/mailbox.js';
 import { OutboxWorker } from '../core/sync/outbox-worker.js';
 import { SyncScheduler } from '../core/sync/scheduler.js';
 import { TasksSync } from '../core/sync/tasks-sync.js';

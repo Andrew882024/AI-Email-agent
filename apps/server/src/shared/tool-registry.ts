@@ -1,8 +1,8 @@
 import { z } from 'zod';
-import { ReauthRequiredError } from '../../auth/errors.js';
-import type { Actor } from '../../shared/types.js';
-import type { ActionLogger } from '../../shared/logging/action-logger.js';
-import { NotFoundError } from '../sync/mailbox.js';
+import { ReauthRequiredError } from '../auth/errors.js';
+import type { Actor } from './types.js';
+import type { ActionLogger } from './logging/action-logger.js';
+import { NotFoundError } from '../mailbox/mailbox.js';
 
 /** read: no side effects. write: changes the mailbox. outbound: sends something to other people. */
 export type SideEffect = 'read' | 'write' | 'outbound';

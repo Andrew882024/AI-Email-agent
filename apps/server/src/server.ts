@@ -28,6 +28,7 @@ import Fastify, {
 import { z } from 'zod';
 import { registerAuthRoutes, requestAccount } from './auth/routes.js';
 import { Sessions } from './auth/sessions.js';
+import { registerMailboxRoutes } from './mailbox/routes.js';
 import { HttpError } from './shared/http.js';
 
 export interface ServerDeps {
@@ -66,15 +67,6 @@ const STATUS: Record<ToolErrorCode, number> = {
 
 const LOCAL_HOSTNAMES = new Set(['localhost', '127.0.0.1', '[::1]']);
 
-/** Attachment types safe to show inline; anything else (HTML, SVG, ...) is forced to download. */
-const INLINE_TYPES = new Set([
-  'image/png',
-  'image/jpeg',
-  'image/gif',
-  'image/webp',
-  'application/pdf',
-]);
-
 const SSE_EVENTS: AppEventName[] = [
   'message.added',
   'message.updated',
@@ -87,13 +79,6 @@ const SSE_EVENTS: AppEventName[] = [
   'workflow.updated',
 ];
 
-const listQuery = z.object({
-  view: z.string().optional(),
-  label: z.string().optional(),
-  q: z.string().optional(),
-  limit: z.coerce.number().optional(),
-  cursor: z.string().optional(),
-});
 const chatMessageBody = z.object({
   text: z.string().max(20_000).default(''),
   fileIds: z.array(z.string()).max(10).default([]),
@@ -196,11 +181,6 @@ export async function buildServer(
     return reply.code(500).send({ error: { code: 'internal', message: 'Internal error' } });
   });
 
-  async function invoke(req: FastifyRequest, name: string, input: unknown) {
-    const account = await requireAccount(req);
-    return tools.invoke(name, { accountId: account.id, actor: 'user' }, input);
-  }
-
   // ---------- auth ----------
   app.get('/api/health', async () => ({ ok: true }));
 
@@ -220,70 +200,12 @@ export async function buildServer(
     },
   });
 
-  // ---------- tools ----------
-  app.get('/api/tools', async () => tools.describe());
-
-  app.post<{ Params: { name: string } }>('/api/tools/:name', async (req) => ({
-    result: await invoke(req, req.params.name, req.body ?? {}),
-  }));
-
-  // ---------- REST reads (thin wrappers over the read tools) ----------
-  app.get('/api/labels', async (req) => invoke(req, 'list_labels', {}));
-
-  app.get('/api/messages', async (req) => {
-    const q = listQuery.parse(req.query);
-    const input = { view: q.view, label: q.label, limit: q.limit, cursor: q.cursor };
-    return q.q
-      ? invoke(req, 'search_emails', { ...input, query: q.q })
-      : invoke(req, 'list_emails', input);
+  registerMailboxRoutes(app, {
+    tools,
+    access,
+    vectors: repos.vectors,
+    indexModel: deps.indexModel,
   });
-
-  app.get('/api/threads', async (req) => {
-    const q = listQuery.parse(req.query);
-    return invoke(req, 'list_threads', {
-      view: q.view,
-      label: q.label,
-      query: q.q,
-      limit: q.limit,
-      cursor: q.cursor,
-    });
-  });
-
-  app.get<{ Params: { id: string } }>('/api/messages/:id', async (req) =>
-    invoke(req, 'get_email', { messageId: req.params.id, includeHtml: true }),
-  );
-
-  app.get<{ Params: { id: string } }>('/api/threads/:id', async (req) =>
-    invoke(req, 'get_thread', { threadId: req.params.id, includeHtml: true }),
-  );
-
-  app.get<{ Params: { id: string; partId: string } }>(
-    '/api/messages/:id/attachments/:partId',
-    async (req, reply) => {
-      const file = (await invoke(req, 'get_attachment', {
-        messageId: req.params.id,
-        partId: req.params.partId,
-      })) as {
-        filename: string;
-        mimeType: string;
-        contentBase64: string;
-      };
-      const inline = INLINE_TYPES.has(file.mimeType.toLowerCase());
-      return reply
-        .header('content-type', inline ? file.mimeType : 'application/octet-stream')
-        .header(
-          'content-disposition',
-          `${inline ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(file.filename)}`,
-        )
-        .header('x-content-type-options', 'nosniff')
-        .header('content-security-policy', 'sandbox')
-        .send(Buffer.from(file.contentBase64, 'base64'));
-    },
-  );
-
-  app.get<{ Querystring: { status?: string } }>('/api/todos', async (req) =>
-    invoke(req, 'list_todos', req.query.status ? { status: req.query.status } : {}),
-  );
 
   // ---------- logs & sync ----------
   app.get('/api/logs', async (req) => {
@@ -307,16 +229,6 @@ export async function buildServer(
       lastFullSyncAt: account.lastFullSyncAt,
       fullSync: state.fullSync,
       outboxPending: pending.length,
-    };
-  });
-
-  app.get('/api/index/status', async (req) => {
-    const account = await requireAccount(req);
-    if (!deps.indexModel) return { enabled: false };
-    return {
-      enabled: true,
-      model: deps.indexModel,
-      ...(await repos.vectors.stats(account.id, deps.indexModel)),
     };
   });
 

@@ -3,15 +3,15 @@ import type { Repositories } from '../repositories.js';
 import { PgAccountRepository } from '../../../auth/account-repository.js';
 import { PgChatFileRepository, PgChatRepository, PgMemoryRepository } from './chat-repository.js';
 import { PgActionLogRepository } from './action-log-repository.js';
-import { PgLabelRepository } from './label-repository.js';
-import { PgMessageRepository } from './message-repository.js';
+import { PgLabelRepository } from '../../../mailbox/label-repository.js';
+import { PgMessageRepository } from '../../../mailbox/message-repository.js';
 import { PgOAuthTokenRepository } from '../../../auth/oauth-token-repository.js';
-import { PgOutboxRepository } from './outbox-repository.js';
+import { PgOutboxRepository } from '../../../mailbox/outbox-repository.js';
 import { PgSessionRepository } from '../../../auth/session-repository.js';
 import { PgSyncStateRepository } from './sync-state-repository.js';
-import { PgVectorStore } from './vector-store.js';
+import { PgVectorStore } from '../../../mailbox/vector-store.js';
 import { PgWorkflowRepository } from './workflow-repository.js';
-import { PgTodoRepository } from './todo-repository.js';
+import { PgTodoRepository } from '../../../mailbox/todo-repository.js';
 
 /** Embedding size; fixed by migration 0003's vector column. */
 export const EMBEDDING_DIMENSIONS = 1536;

@@ -1,8 +1,8 @@
 import { type Selectable, sql } from 'kysely';
-import type { Todo, TodoStatus } from '../../../shared/types.js';
-import type { Db } from '../../../shared/db/connection.js';
-import type { NewTodo, TodoPatch, TodoRepository } from '../repositories.js';
-import type { TodosTable } from '../../../shared/db/schema.js';
+import type { Todo, TodoStatus } from '../shared/types.js';
+import type { Db } from '../shared/db/connection.js';
+import type { NewTodo, TodoPatch, TodoRepository } from './repositories.js';
+import type { TodosTable } from '../shared/db/schema.js';
 
 function toTodo(row: Selectable<TodosTable>): Todo {
   return {

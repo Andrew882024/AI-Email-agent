@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { Repositories } from '../db/repositories.js';
-import { defineTool, type ToolContext } from '../tools/registry.js';
+import { defineTool, type ToolContext } from '../../shared/tool-registry.js';
 import { DOCUMENT_NAMES, type WorkflowEngine } from './engine.js';
 
 const workflowId = z.string().min(1);

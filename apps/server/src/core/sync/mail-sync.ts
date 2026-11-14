@@ -6,7 +6,7 @@ import type { GatewayProvider, GmailGateway } from '../../shared/google/gateways
 import { mapLimit } from '../../shared/google/retry.js';
 import type { ActionLogger } from '../../shared/logging/action-logger.js';
 import type { Logger } from '../../shared/logging/system-logger.js';
-import type { OutboxPayloads } from './outbox-ops.js';
+import type { OutboxPayloads } from '../../mailbox/outbox-ops.js';
 import { parseGmailLabel, parseGmailMessage } from './parse-message.js';
 
 export interface MailSyncOptions {

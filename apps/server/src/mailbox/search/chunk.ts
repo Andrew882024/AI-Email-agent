@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { EmailAddress, Message } from '../../shared/types.js';
-import { decodeEntities } from '../sync/parse-message.js';
+import { decodeEntities } from '../../core/sync/parse-message.js';
 
 /** Upper bound on body text per chunk; gemini-embedding-2 reads ~8k tokens and truncates beyond. */
 export const MAX_BODY_CHARS = 12_000;

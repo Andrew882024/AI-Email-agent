@@ -3,7 +3,7 @@ import type { GoogleAuthProvider } from '../../auth/google-auth.js';
 import type { Repositories } from '../db/repositories.js';
 import type { EventBus } from '../../shared/events/event-bus.js';
 import type { Logger } from '../../shared/logging/system-logger.js';
-import type { EmailIndexer } from '../rag/indexer.js';
+import type { EmailIndexer } from '../../mailbox/search/indexer.js';
 import type { MailSync } from './mail-sync.js';
 import type { OutboxWorker } from './outbox-worker.js';
 import type { TasksSync } from './tasks-sync.js';

@@ -1,4 +1,4 @@
-import type { Repositories } from '../db/repositories.js';
+import type { Repositories } from '../../core/db/repositories.js';
 import type { EventBus } from '../../shared/events/event-bus.js';
 import type { EmbeddingProvider } from '../../shared/llm/types.js';
 import type { Logger } from '../../shared/logging/system-logger.js';

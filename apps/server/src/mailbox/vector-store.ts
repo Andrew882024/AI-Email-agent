@@ -1,8 +1,8 @@
 import { sql } from 'kysely';
-import type { Db } from '../../../shared/db/connection.js';
-import type { MessageFilter, VectorStore } from '../repositories.js';
+import type { Db } from '../shared/db/connection.js';
+import type { MessageFilter, VectorStore } from './repositories.js';
 import { messageFilter } from './message-repository.js';
-import { chunk, clamp } from '../../../shared/db/util.js';
+import { chunk, clamp } from '../shared/db/util.js';
 
 /** pgvector literal. */
 const toVector = (values: number[]) => `[${values.join(',')}]`;

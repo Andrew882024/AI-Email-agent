@@ -1,8 +1,8 @@
 import { type Selectable, sql } from 'kysely';
-import type { Label } from '../../../shared/types.js';
-import type { Db } from '../../../shared/db/connection.js';
-import type { LabelRepository } from '../repositories.js';
-import type { LabelsTable } from '../../../shared/db/schema.js';
+import type { Label } from '../shared/types.js';
+import type { Db } from '../shared/db/connection.js';
+import type { LabelRepository } from './repositories.js';
+import type { LabelsTable } from '../shared/db/schema.js';
 
 function toLabel(row: Selectable<LabelsTable>): Label {
   return {
