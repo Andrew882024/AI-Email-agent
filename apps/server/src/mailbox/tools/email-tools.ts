@@ -191,6 +191,7 @@ export function createEmailTools(deps: EmailToolDeps) {
   async function loadAttachment(ctx: ToolContext, msg: Message, partId: string) {
     const meta = msg.attachments.find((a) => a.partId === partId);
     if (!meta) throw new NotFoundError(`Message ${msg.id} has no attachment part ${partId}`);
+    // Exception: reads Gmail directly, because attachment bytes aren't kept in the local copy.
     const gmail = await gateways.gmail(ctx.accountId);
     if (meta.attachmentId) {
       try {
@@ -429,6 +430,7 @@ export function createEmailTools(deps: EmailToolDeps) {
       handler: async (ctx, i) => {
         const existing = await repos.labels.findByName(ctx.accountId, i.name);
         if (existing) return { label: existing, created: false };
+        // Exception: created in Gmail directly, not queued, because callers need Gmail's label id now.
         const label = parseGmailLabel(
           await (await gateways.gmail(ctx.accountId)).createLabel(i.name),
         );

@@ -52,6 +52,7 @@ export function localDateTime(d: Date): string {
  * Doc kept next to it, and re-exported into the same Drive file after every append, so its link
  * stays the same.
  */
+// Exception: writes Google Drive directly, not through sync, since documents aren't mirrored locally.
 export class GoogleDriveDocumentSink implements DocumentSink {
   constructor(
     private readonly gateways: GatewayProvider,
