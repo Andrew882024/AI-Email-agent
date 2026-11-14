@@ -35,6 +35,7 @@ const HISTORY: { name: string; adds?: string[]; drops?: string[] }[] = [
   { name: '0007_sessions', adds: ['sessions'] },
   { name: '0008_drop_threads', drops: ['threads'] },
   { name: '0009_drop_action_logs', drops: ['action_logs'] },
+  { name: '0010_merge_account_state', drops: ['oauth_tokens', 'sync_state'] },
 ];
 
 /** The app tables after the first `count` migrations, sorted. */
@@ -108,6 +109,54 @@ describe.skipIf(!testDatabaseUrl)('migrator', () => {
     const { rows } = await sql<{ id: string; snippet: string }>`
       select id, snippet from threads`.execute(t.db);
     expect(rows).toEqual([{ id: 'T', snippet: 'new' }]);
+
+    await migrateToLatest(t.db);
+    await migrateReset(t.db);
+  });
+
+  it('moves OAuth tokens and sync state onto accounts and back (0010)', async () => {
+    await migrateToLatest(t.db);
+    await revertThrough('0010_merge_account_state');
+    await sql`insert into accounts (id, email, google_sub) values
+      ('00000000-0000-0000-0000-000000000001', 'a@example.com', 'a'),
+      ('00000000-0000-0000-0000-000000000002', 'b@example.com', 'b')`.execute(t.db);
+    await sql`insert into oauth_tokens (account_id, encrypted_refresh_token, scopes)
+      values ('00000000-0000-0000-0000-000000000001', 'cipher', '{gmail}')`.execute(t.db);
+    await sql`insert into sync_state (account_id, full_sync_started_at, full_sync_history_id,
+        full_sync_page_token, full_sync_count)
+      values ('00000000-0000-0000-0000-000000000001', now(), '42', 'page-3', 7)`.execute(t.db);
+
+    await migrateToLatest(t.db);
+    const { rows } = await sql<Record<string, unknown>>`
+      select email, encrypted_refresh_token, oauth_scopes, full_sync_history_id,
+        full_sync_page_token, full_sync_count
+      from accounts order by email`.execute(t.db);
+    expect(rows).toEqual([
+      {
+        email: 'a@example.com',
+        encrypted_refresh_token: 'cipher',
+        oauth_scopes: ['gmail'],
+        full_sync_history_id: '42',
+        full_sync_page_token: 'page-3',
+        full_sync_count: 7,
+      },
+      {
+        email: 'b@example.com',
+        encrypted_refresh_token: null,
+        oauth_scopes: [],
+        full_sync_history_id: null,
+        full_sync_page_token: null,
+        full_sync_count: 0,
+      },
+    ]);
+
+    await revertThrough('0010_merge_account_state');
+    const tokens = await sql<Record<string, unknown>>`
+      select encrypted_refresh_token, scopes from oauth_tokens`.execute(t.db);
+    expect(tokens.rows).toEqual([{ encrypted_refresh_token: 'cipher', scopes: ['gmail'] }]);
+    const syncs = await sql<Record<string, unknown>>`
+      select full_sync_history_id, full_sync_count from sync_state`.execute(t.db);
+    expect(syncs.rows).toEqual([{ full_sync_history_id: '42', full_sync_count: 7 }]);
 
     await migrateToLatest(t.db);
     await migrateReset(t.db);

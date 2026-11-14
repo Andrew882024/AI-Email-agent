@@ -4,7 +4,21 @@ import type { Db } from '../connection.js';
 import type { AccountRepository } from '../repositories.js';
 import type { AccountsTable } from '../schema.js';
 
-function toAccount(row: Selectable<AccountsTable>): Account {
+/** Everything but the OAuth token and sync checkpoint, which have their own repositories. */
+const ACCOUNT_COLUMNS = [
+  'id',
+  'email',
+  'google_sub',
+  'display_name',
+  'history_id',
+  'last_full_sync_at',
+  'created_at',
+  'updated_at',
+] as const;
+
+type AccountRow = Pick<Selectable<AccountsTable>, (typeof ACCOUNT_COLUMNS)[number]>;
+
+function toAccount(row: AccountRow): Account {
   return {
     id: row.id,
     email: row.email,
@@ -32,7 +46,7 @@ export class PgAccountRepository implements AccountRepository {
           updated_at: sql`now()`,
         }),
       )
-      .returningAll()
+      .returning(ACCOUNT_COLUMNS)
       .executeTakeFirstOrThrow();
     return toAccount(row);
   }
@@ -40,14 +54,18 @@ export class PgAccountRepository implements AccountRepository {
   async getById(id: string) {
     const row = await this.db
       .selectFrom('accounts')
-      .selectAll()
+      .select(ACCOUNT_COLUMNS)
       .where('id', '=', id)
       .executeTakeFirst();
     return row && toAccount(row);
   }
 
   async list() {
-    const rows = await this.db.selectFrom('accounts').selectAll().orderBy('created_at').execute();
+    const rows = await this.db
+      .selectFrom('accounts')
+      .select(ACCOUNT_COLUMNS)
+      .orderBy('created_at')
+      .execute();
     return rows.map(toAccount);
   }
 

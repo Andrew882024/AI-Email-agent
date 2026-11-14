@@ -2,44 +2,44 @@ import { sql } from 'kysely';
 import type { Db } from '../connection.js';
 import type { OAuthTokenRepository, StoredOAuthToken } from '../repositories.js';
 
+/** The account's Google refresh token, kept in columns of `accounts`. */
 export class PgOAuthTokenRepository implements OAuthTokenRepository {
   constructor(private readonly db: Db) {}
 
   async get(accountId: string): Promise<StoredOAuthToken | undefined> {
     const row = await this.db
-      .selectFrom('oauth_tokens')
-      .selectAll()
-      .where('account_id', '=', accountId)
+      .selectFrom('accounts')
+      .select(['id', 'encrypted_refresh_token', 'oauth_scopes', 'oauth_updated_at'])
+      .where('id', '=', accountId)
+      .where('encrypted_refresh_token', 'is not', null)
       .executeTakeFirst();
     return (
       row && {
-        accountId: row.account_id,
-        encryptedRefreshToken: row.encrypted_refresh_token,
-        scopes: row.scopes,
-        updatedAt: row.updated_at,
+        accountId: row.id,
+        encryptedRefreshToken: row.encrypted_refresh_token!,
+        scopes: row.oauth_scopes,
+        updatedAt: row.oauth_updated_at!,
       }
     );
   }
 
   async save(accountId: string, token: { encryptedRefreshToken: string; scopes: string[] }) {
     await this.db
-      .insertInto('oauth_tokens')
-      .values({
-        account_id: accountId,
+      .updateTable('accounts')
+      .set({
         encrypted_refresh_token: token.encryptedRefreshToken,
-        scopes: token.scopes,
+        oauth_scopes: token.scopes,
+        oauth_updated_at: sql`now()`,
       })
-      .onConflict((oc) =>
-        oc.column('account_id').doUpdateSet({
-          encrypted_refresh_token: token.encryptedRefreshToken,
-          scopes: token.scopes,
-          updated_at: sql`now()`,
-        }),
-      )
+      .where('id', '=', accountId)
       .execute();
   }
 
   async delete(accountId: string) {
-    await this.db.deleteFrom('oauth_tokens').where('account_id', '=', accountId).execute();
+    await this.db
+      .updateTable('accounts')
+      .set({ encrypted_refresh_token: null, oauth_scopes: [], oauth_updated_at: null })
+      .where('id', '=', accountId)
+      .execute();
   }
 }

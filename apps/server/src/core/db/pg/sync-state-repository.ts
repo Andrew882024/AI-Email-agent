@@ -3,14 +3,22 @@ import type { FullSyncCheckpoint, SyncState } from '../../domain/types.js';
 import type { Db } from '../connection.js';
 import type { SyncStateRepository } from '../repositories.js';
 
+/** Full-sync checkpoint and Tasks polling cursor, kept in columns of `accounts`. */
 export class PgSyncStateRepository implements SyncStateRepository {
   constructor(private readonly db: Db) {}
 
   async get(accountId: string): Promise<SyncState> {
     const row = await this.db
-      .selectFrom('sync_state')
-      .selectAll()
-      .where('account_id', '=', accountId)
+      .selectFrom('accounts')
+      .select([
+        'full_sync_started_at',
+        'full_sync_history_id',
+        'full_sync_page_token',
+        'full_sync_window_start',
+        'full_sync_count',
+        'tasks_synced_at',
+      ])
+      .where('id', '=', accountId)
       .executeTakeFirst();
     return {
       accountId,
@@ -29,19 +37,16 @@ export class PgSyncStateRepository implements SyncStateRepository {
   }
 
   async beginFullSync(accountId: string, input: { historyId: string; windowStart?: Date }) {
-    const values = {
-      full_sync_started_at: sql<Date>`now()`,
-      full_sync_history_id: input.historyId,
-      full_sync_page_token: null,
-      full_sync_window_start: input.windowStart ?? null,
-      full_sync_count: 0,
-    };
     const row = await this.db
-      .insertInto('sync_state')
-      .values({ account_id: accountId, ...values })
-      .onConflict((oc) =>
-        oc.column('account_id').doUpdateSet({ ...values, updated_at: sql`now()` }),
-      )
+      .updateTable('accounts')
+      .set({
+        full_sync_started_at: sql<Date>`now()`,
+        full_sync_history_id: input.historyId,
+        full_sync_page_token: null,
+        full_sync_window_start: input.windowStart ?? null,
+        full_sync_count: 0,
+      })
+      .where('id', '=', accountId)
       .returning('full_sync_started_at')
       .executeTakeFirstOrThrow();
     return {
@@ -66,12 +71,7 @@ export class PgSyncStateRepository implements SyncStateRepository {
       }),
       ...(patch.tasksSyncedAt !== undefined && { tasks_synced_at: patch.tasksSyncedAt }),
     };
-    await this.db
-      .insertInto('sync_state')
-      .values({ account_id: accountId, ...values })
-      .onConflict((oc) =>
-        oc.column('account_id').doUpdateSet({ ...values, updated_at: sql`now()` }),
-      )
-      .execute();
+    if (Object.keys(values).length === 0) return;
+    await this.db.updateTable('accounts').set(values).where('id', '=', accountId).execute();
   }
 }

@@ -14,14 +14,18 @@ export interface AccountsTable {
   display_name: string | null;
   history_id: string | null;
   last_full_sync_at: Date | null;
+  /** SecretCipher output; null when no Google token is stored. */
+  encrypted_refresh_token: string | null;
+  oauth_scopes: Generated<string[]>;
+  oauth_updated_at: Date | null;
+  /** Resumable full-sync checkpoint; non-null while a full sync is in progress. */
+  full_sync_started_at: Date | null;
+  full_sync_history_id: string | null;
+  full_sync_page_token: string | null;
+  full_sync_window_start: Date | null;
+  full_sync_count: Generated<number>;
+  tasks_synced_at: Date | null;
   created_at: Generated<Date>;
-  updated_at: Generated<Date>;
-}
-
-export interface OAuthTokensTable {
-  account_id: string;
-  encrypted_refresh_token: string;
-  scopes: string[];
   updated_at: Generated<Date>;
 }
 
@@ -109,17 +113,6 @@ export interface OutboxOpsTable {
   last_error: string | null;
   next_attempt_at: Generated<Date>;
   created_at: Generated<Date>;
-  updated_at: Generated<Date>;
-}
-
-export interface SyncStateTable {
-  account_id: string;
-  full_sync_started_at: Date | null;
-  full_sync_history_id: string | null;
-  full_sync_page_token: string | null;
-  full_sync_window_start: Date | null;
-  full_sync_count: Generated<number>;
-  tasks_synced_at: Date | null;
   updated_at: Generated<Date>;
 }
 
@@ -223,7 +216,6 @@ export interface WorkflowDecisionsTable {
 
 export interface Database {
   accounts: AccountsTable;
-  oauth_tokens: OAuthTokensTable;
   sessions: SessionsTable;
   labels: LabelsTable;
   messages: MessagesTable;
@@ -231,7 +223,6 @@ export interface Database {
   attachments: AttachmentsTable;
   todos: TodosTable;
   outbox_ops: OutboxOpsTable;
-  sync_state: SyncStateTable;
   email_embeddings: EmailEmbeddingsTable;
   chat_sessions: ChatSessionsTable;
   chat_messages: ChatMessagesTable;
