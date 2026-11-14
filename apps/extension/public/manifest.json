@@ -1,0 +1,23 @@
+{
+  "manifest_version": 3,
+  "name": "AI Email Agent for Gmail",
+  "version": "0.1.0",
+  "description": "The AI Email Agent assistant in a side panel next to Gmail.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA0LfzkX2JyQGhAxDdBblJLcWZ3ngI30rufxa9Y8oso0/DTkEF/RzXT1DpTMZOkn4Xq+9IVoWa9d9dzrNa/7WKaYDH3OGOyOOhKKxolrT7xMXkhFbCJqg4ObWbEuazokN5ZuHfNm5WDO9L4CeNCg6CfcIZ25cVcEBJBvzyCMX0mdvM4itY/hVNKcbFUmk9thfsfsEEynFIPvms5xk9MqQEm7rpAcV6RlPc1pyXjhe+B2olJlF5eo5km1VwVsa7PcHJXBhSJSX5yLYoKCfZY6beuebTTBrTL4cvDoHGFiqrhpeHySglK6U4qdCd8bJboflSlOYqOXgvLxuD0GFipMxcGwIDAQAB",
+  "permissions": ["sidePanel"],
+  "host_permissions": ["https://mail.google.com/*", "http://localhost/*"],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "AI Email Agent"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://mail.google.com/*"],
+      "js": ["gmail.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
