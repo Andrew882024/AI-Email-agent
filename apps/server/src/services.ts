@@ -71,7 +71,7 @@ export function createServices(config: AppConfig): Services {
   const db = createDb(config.databaseUrl);
   const repos = createPgRepositories(db);
   const events = new EventBus(logger);
-  const actions = new ActionLogger(repos.actionLogs, logger);
+  const actions = new ActionLogger(logger);
   const auth = new GoogleOAuthService({
     clientId: config.google.clientId,
     clientSecret: config.google.clientSecret,

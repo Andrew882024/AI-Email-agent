@@ -9,13 +9,14 @@ import {
   type TestDatabase,
   testDatabaseUrl,
 } from '../../../test/helpers/db.js';
+import { recordActions } from '../../../test/helpers/actions.js';
 import { FakeGateways } from '../../../test/helpers/fake-google.js';
 import { FakeEmbeddings, ScriptedLLM } from '../../../test/helpers/fake-llm.js';
 import { createPgRepositories } from '../db/pg/index.js';
 import type { Repositories } from '../db/repositories.js';
 import { EventBus } from '../events/event-bus.js';
 import type { GenerateRequest, Part } from '../llm/types.js';
-import { ActionLogger } from '../logging/action-logger.js';
+import type { ActionEntry } from '../logging/action-logger.js';
 import { HybridSearch } from '../rag/hybrid-search.js';
 import { MailSync } from '../sync/mail-sync.js';
 import { MailboxService } from '../sync/mailbox.js';
@@ -44,6 +45,7 @@ describe.skipIf(!testDatabaseUrl)('ChatAgent', () => {
   let tools: ToolRegistry;
   let files: ChatFileStore;
   const logger = pino({ level: 'silent' });
+  const logged: ActionEntry[] = [];
   /** Agent turns answer from `turns` in order; the memory judge answers from `judge`. */
   let turns: ((r: GenerateRequest) => string | Part[])[];
   let judge: (r: GenerateRequest) => string;
@@ -57,7 +59,7 @@ describe.skipIf(!testDatabaseUrl)('ChatAgent', () => {
       if (!next) throw new Error('unexpected model turn');
       return next(request);
     });
-    const actions = new ActionLogger(repos.actionLogs, logger);
+    const { actions } = recordActions(logged);
     const memory = new MemoryService({
       repos,
       llm,
@@ -98,13 +100,13 @@ describe.skipIf(!testDatabaseUrl)('ChatAgent', () => {
 
   beforeEach(async () => {
     await sql`truncate accounts cascade`.execute(t.db);
-    await sql`truncate action_logs`.execute(t.db);
+    logged.length = 0;
     accountId = (
       await repos.accounts.upsert({ email: 'me@example.com', googleSub: 's', displayName: 'Me' })
     ).id;
     google = new FakeGateways();
     const events = new EventBus(logger);
-    const actions = new ActionLogger(repos.actionLogs, logger);
+    const { actions } = recordActions(logged);
     google.fakeGmail.add(
       {
         id: 'inv',
@@ -195,7 +197,7 @@ describe.skipIf(!testDatabaseUrl)('ChatAgent', () => {
       events.filter((e) => e.type === 'tool_result').every((e) => (e as { ok: boolean }).ok),
     ).toBe(true);
     expect((await repos.messages.getById(accountId, 'inv'))?.isStarred).toBe(true);
-    const [log] = (await repos.actionLogs.query({ action: 'star', limit: 1 })).items;
+    const log = logged.filter((e) => e.action === 'star').at(-1);
     expect(log).toMatchObject({
       actor: `agent:${sessionId}`,
       targetIds: ['inv'],
@@ -363,7 +365,7 @@ describe.skipIf(!testDatabaseUrl)('ChatAgent', () => {
     await say(a, s1, 'Always answer me in Chinese from now on');
     const memories = await repos.memory.list(accountId);
     expect(memories.map((m) => m.content)).toEqual(['Prefers answers in Chinese.']);
-    const [log] = (await repos.actionLogs.query({ action: 'memory.add', limit: 1 })).items;
+    const log = logged.filter((e) => e.action === 'memory.add').at(-1);
     expect(log).toMatchObject({
       actor: `agent:${s1}`,
       params: { content: 'Prefers answers in Chinese.' },

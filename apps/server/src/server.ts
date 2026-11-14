@@ -8,7 +8,6 @@ import {
   type ChatFileStore,
   type MemoryService,
   UnsupportedFileError,
-  type Actor,
   type AppEventName,
   AuthFlowError,
   type EventBus,
@@ -123,14 +122,6 @@ const uploadBody = z.object({
   filename: z.string().min(1).max(255),
   mimeType: z.string().max(255).default('application/octet-stream'),
   contentBase64: z.string().min(1),
-});
-
-const logQuery = z.object({
-  actor: z.string().optional(),
-  action: z.string().optional(),
-  status: z.enum(['success', 'error']).optional(),
-  limit: z.coerce.number().int().min(1).max(500).default(50),
-  cursor: z.string().optional(),
 });
 
 function hostnameOf(hostHeader: string | undefined): string {
@@ -307,14 +298,13 @@ export async function buildServer(
 
   /**
    * Delete the account: revoke Google access and erase everything this app keeps for it (mail
-   * copy, index, chats, memory, workflows, uploads, logs). Gmail and Drive are not touched.
+   * copy, index, chats, memory, workflows, uploads). Gmail and Drive are not touched.
    */
   app.delete('/api/account', async (req, reply) => {
     const account = await requireAccount(req);
     await auth.revoke(account.id);
     await scheduler.removeAccount(account.id);
     await deps.chat?.files.deleteForAccount(account.id);
-    await repos.actionLogs.deleteForAccount(account.id);
     await repos.accounts.delete(account.id); // the rest goes with it (ON DELETE CASCADE)
     reply.clearCookie(SESSION_COOKIE, { path: '/' });
     return { ok: true };
@@ -385,17 +375,7 @@ export async function buildServer(
     invoke(req, 'list_todos', req.query.status ? { status: req.query.status } : {}),
   );
 
-  // ---------- logs & sync ----------
-  app.get('/api/logs', async (req) => {
-    const account = await requireAccount(req);
-    const q = logQuery.parse(req.query);
-    return repos.actionLogs.query({
-      ...q,
-      accountId: account.id,
-      actor: q.actor as Actor | undefined,
-    });
-  });
-
+  // ---------- sync ----------
   app.get('/api/sync/status', async (req) => {
     const account = await requireAccount(req);
     const [state, pending] = await Promise.all([

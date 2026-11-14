@@ -34,6 +34,7 @@ const HISTORY: { name: string; adds?: string[]; drops?: string[] }[] = [
   { name: '0006_document_workflows' },
   { name: '0007_sessions', adds: ['sessions'] },
   { name: '0008_drop_threads', drops: ['threads'] },
+  { name: '0009_drop_action_logs', drops: ['action_logs'] },
 ];
 
 /** The app tables after the first `count` migrations, sorted. */
@@ -59,6 +60,15 @@ describe.skipIf(!testDatabaseUrl)('migrator', () => {
       where schemaname = 'public' and tablename not like 'kysely_%'
       order by tablename`.execute(t.db);
     return rows.map((r) => r.tablename);
+  };
+
+  /** Revert migrations, newest first, until `name` has been reverted. */
+  const revertThrough = async (name: string) => {
+    for (;;) {
+      const [result] = await migrateDown(t.db);
+      if (!result) throw new Error(`${name} was never applied`);
+      if (result.migrationName === name) return;
+    }
   };
 
   it('migrates up, down one at a time and up again', async () => {
@@ -94,7 +104,7 @@ describe.skipIf(!testDatabaseUrl)('migrator', () => {
       t.db,
     );
 
-    expect((await migrateDown(t.db)).map((r) => r.migrationName)).toEqual(['0008_drop_threads']);
+    await revertThrough('0008_drop_threads');
     const { rows } = await sql<{ id: string; snippet: string }>`
       select id, snippet from threads`.execute(t.db);
     expect(rows).toEqual([{ id: 'T', snippet: 'new' }]);

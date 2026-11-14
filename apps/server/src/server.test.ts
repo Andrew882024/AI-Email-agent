@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import {
+  type ActionEntry,
   ActionLogger,
   AesGcmSecretCipher,
   ChatAgent,
@@ -25,11 +26,13 @@ import { sql } from 'kysely';
 import { pino } from 'pino';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createTestDatabase, type TestDatabase, testDatabaseUrl } from '../test/helpers/db.js';
+import { recordActions } from '../test/helpers/actions.js';
 import { FakeGateways } from '../test/helpers/fake-google.js';
 import { ScriptedLLM } from '../test/helpers/fake-llm.js';
 import { buildServer } from './server.js';
 
 const logger = pino({ level: 'silent' });
+const logged: ActionEntry[] = [];
 const ORIGIN = 'http://localhost:5173';
 const OPTIONS = { appUrl: ORIGIN, allowedOrigins: [] as string[], heartbeatMs: 50 };
 const cipher = new AesGcmSecretCipher('k'.repeat(32));
@@ -91,13 +94,13 @@ describe.skipIf(!testDatabaseUrl)('HTTP API', () => {
 
   beforeEach(async () => {
     await sql`truncate accounts cascade`.execute(t.db);
-    await sql`truncate action_logs`.execute(t.db);
+    logged.length = 0;
     vi.clearAllMocks();
     account = await repos.accounts.upsert({ email: 'me@example.com', googleSub: 's' });
     cookie = await signIn(account.id);
     google = new FakeGateways();
     events = new EventBus(logger);
-    const actions = new ActionLogger(repos.actionLogs, logger);
+    const { actions } = recordActions(logged);
     const mailSync = new MailSync({
       repos,
       gateways: google,
@@ -227,8 +230,7 @@ describe.skipIf(!testDatabaseUrl)('HTTP API', () => {
       expect(res.json()).toEqual({ result: { updated: 1 } });
       await worker.drain(account.id);
       expect(google.fakeGmail.labelsOf('m1')).toContain('STARRED');
-      const logs = (await get('/api/logs?actor=user')).json();
-      expect(logs.items).toEqual([
+      expect(logged.filter((e) => e.actor === 'user')).toEqual([
         expect.objectContaining({
           actor: 'user',
           action: 'star',
@@ -304,7 +306,6 @@ describe.skipIf(!testDatabaseUrl)('HTTP API', () => {
       expect((await get('/api/messages/m1', theirs)).statusCode).toBe(404);
       expect((await get('/api/threads/t-m1', theirs)).statusCode).toBe(404);
       expect((await get('/api/messages/m2/attachments/1', theirs)).statusCode).toBe(404);
-      expect((await get('/api/logs', theirs)).json().items).toEqual([]);
       expect((await get(`/api/chat/sessions/${chat.id}`, theirs)).statusCode).toBe(404);
 
       await post('/api/tools/unstar', { messageIds: ['m1'] }, theirs);
@@ -358,7 +359,7 @@ describe.skipIf(!testDatabaseUrl)('HTTP API', () => {
         if (!next) throw new Error('unexpected turn');
         return next() as never;
       });
-      const actions = new ActionLogger(repos.actionLogs, logger);
+      const actions = new ActionLogger(logger);
       const memory = new MemoryService({ repos, llm, actions, logger });
       const files = new ChatFileStore(repos.chatFiles, await mkdtemp(join(tmpdir(), 'chat-')));
       chatAgent = new ChatAgent({ repos, llm, tools, files, memory, logger });

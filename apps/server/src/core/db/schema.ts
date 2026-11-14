@@ -112,19 +112,6 @@ export interface OutboxOpsTable {
   updated_at: Generated<Date>;
 }
 
-export interface ActionLogsTable {
-  id: Int8Id;
-  ts: Generated<Date>;
-  account_id: string | null;
-  actor: string;
-  action: string;
-  target_ids: Generated<string[]>;
-  params: Json<unknown> | null;
-  status: 'success' | 'error';
-  error: string | null;
-  duration_ms: number | null;
-}
-
 export interface SyncStateTable {
   account_id: string;
   full_sync_started_at: Date | null;
@@ -244,7 +231,6 @@ export interface Database {
   attachments: AttachmentsTable;
   todos: TodosTable;
   outbox_ops: OutboxOpsTable;
-  action_logs: ActionLogsTable;
   sync_state: SyncStateTable;
   email_embeddings: EmailEmbeddingsTable;
   chat_sessions: ChatSessionsTable;

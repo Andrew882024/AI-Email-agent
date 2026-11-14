@@ -1,33 +1,34 @@
-import type { ActionLogEntry } from '../domain/types.js';
-import type { ActionLogRepository, NewActionLog } from '../db/repositories.js';
+import type { ActionStatus, Actor } from '../domain/types.js';
 import type { Logger } from './system-logger.js';
 
+/** One action (by the user, the agent, a workflow or sync) and how it went. */
+export interface ActionEntry {
+  accountId?: string;
+  actor: Actor;
+  action: string;
+  targetIds?: string[];
+  params?: unknown;
+  status: ActionStatus;
+  error?: string;
+  durationMs?: number;
+}
+
 /** Who/what an action is about; status, error and duration are filled in by `track`. */
-export type ActionContext = Omit<NewActionLog, 'status' | 'error' | 'durationMs'>;
+export type ActionContext = Omit<ActionEntry, 'status' | 'error' | 'durationMs'>;
 
 /**
- * Records every action (user, agent, workflow or sync) with a timestamp, to the action_logs table
- * and the system log. Logging never breaks the action: persistence failures are reported to the
- * system log and swallowed.
+ * Records every action (user, agent, workflow or sync) to the system log, as `kind: 'action'`
+ * lines, so app.jsonl is the audit trail.
  */
 export class ActionLogger {
-  constructor(
-    private readonly repo: ActionLogRepository,
-    private readonly logger: Logger,
-  ) {}
+  constructor(private readonly logger: Logger) {}
 
-  async log(entry: NewActionLog): Promise<ActionLogEntry | undefined> {
+  async log(entry: ActionEntry): Promise<void> {
     const level = entry.status === 'error' ? 'warn' : 'info';
     this.logger[level](
       { kind: 'action', ...entry },
       `${entry.actor} ${entry.action} ${entry.status}`,
     );
-    try {
-      return await this.repo.insert(entry);
-    } catch (err) {
-      this.logger.error({ err, action: entry.action }, 'failed to persist action log');
-      return undefined;
-    }
   }
 
   /** Run `fn`, then log it as success or error with its duration. Rethrows `fn`'s error. */
